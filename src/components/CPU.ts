@@ -1,4 +1,4 @@
-// 6502 CPU
+// 65c02 CPU
 // Adapted from: https://github.com/OneLoneCoder/olcNES
 
 export interface CPUInstruction {
@@ -122,7 +122,7 @@ export class CPU {
       const hi: number = this.read(nmiVector + 1)
       this.pc = (hi << 8) | lo
 
-      // NMI takes 8 clock cycles
+      // NMI takes 7 clock cycles
       this.cyclesRem = 7
       this.cycles += 7
   }
@@ -327,12 +327,8 @@ export class CPU {
 
     const ptr = (ptrHi << 8) | ptrLo
 
-    // Simulate page boundary hardware bug
-    if (ptrLo == 0x00FF) {
-      this.addrAbs = (this.read(ptr & 0xFF00) << 8) | this.read(ptr)
-    } else {
-      this.addrAbs = (this.read(ptr + 1) << 8) | this.read(ptr)
-    }
+    // 65C02 fixed the page boundary bug from the original 6502
+    this.addrAbs = (this.read(ptr + 1) << 8) | this.read(ptr)
 
     return 0
   }
@@ -375,12 +371,10 @@ export class CPU {
   private ADC(): number {
     this.fetch()
 
-    const value = this.fetched ^ 0x00FF
-
-    this.temp = this.a + value + this.getFlag(CPU.C)
+    this.temp = this.a + this.fetched + this.getFlag(CPU.C)
     this.setFlag(CPU.C, (this.temp & 0xFF00) != 0)
     this.setFlag(CPU.Z, (this.temp & 0x00FF) == 0)
-    this.setFlag(CPU.V, ((this.temp ^ this.a) & (this.temp ^ value) & 0x0080) != 0)
+    this.setFlag(CPU.V, ((this.temp ^ this.a) & (this.temp ^ this.fetched) & 0x0080) != 0)
     this.setFlag(CPU.N, (this.temp & 0x0080) != 0)
 
     this.a = this.temp & 0x00FF
@@ -606,14 +600,14 @@ export class CPU {
   }
 
   private DEX(): number {
-    this.x--
+    this.x = (this.x - 1) & 0xFF
     this.setFlag(CPU.Z, this.x == 0x00)
     this.setFlag(CPU.N, (this.x & 0x80) != 0)
     return 0
   }
 
   private DEY(): number {
-    this.y--
+    this.y = (this.y - 1) & 0xFF
     this.setFlag(CPU.Z, this.y == 0x00)
     this.setFlag(CPU.N, (this.y & 0x80) != 0)
     return 0
@@ -637,14 +631,14 @@ export class CPU {
   }
 
   private INX(): number {
-    this.x++
+    this.x = (this.x + 1) & 0xFF
     this.setFlag(CPU.Z, this.x == 0x00)
     this.setFlag(CPU.N, (this.x & 0x80) != 0)
     return 0
   }
 
   private INY(): number {
-    this.y++
+    this.y = (this.y + 1) & 0xFF
     this.setFlag(CPU.Z, this.y == 0x00)
     this.setFlag(CPU.N, (this.y & 0x80) != 0)
     return 0
@@ -658,7 +652,7 @@ export class CPU {
   private JSR(): number {
     this.decPC()
 
-    this.write(0x0100 + this.sp, (this.pc << 8) & 0x00FF)
+    this.write(0x0100 + this.sp, (this.pc >> 8) & 0x00FF)
     this.decSP()
     this.write(0x0100 + this.sp, this.pc & 0x00FF)
     this.decSP()
