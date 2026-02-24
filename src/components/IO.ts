@@ -1,10 +1,3 @@
-export interface IODescription {
-
-  className: string
-  title: string
-  
-}
-
 export interface IO {
 
   raiseIRQ: () => void
@@ -12,9 +5,7 @@ export interface IO {
 
   read(address: number): number
   write(address: number, data: number): void
-  tick(): void
-  reset(): void
-  
-  description(): IODescription
+  tick(frequency: number): void
+  reset(coldStart: boolean): void
   
 }

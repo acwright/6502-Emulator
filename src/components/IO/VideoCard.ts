@@ -1,19 +1,15 @@
-import { IO, IODescription } from '../IO'
+import { IO } from '../IO'
 
 export class VideoCard implements IO {
-
-  static DESCRIPTION: IODescription = { className: 'VideoCard', title: 'Video Card' }
 
   raiseIRQ = () => {}
   raiseNMI = () => {}
 
+  buffer: Buffer = Buffer.alloc(320 * 240 * 4) // 256x256 pixels, RGBA format
+
   read(address: number): number { return 0 }
   write(address: number, data: number): void {}
-  tick(): void {}
-  reset(): void {}
-  
-  description(): IODescription {
-    return VideoCard.DESCRIPTION
-  }
+  tick(frequency: number): void {}
+  reset(coldStart: boolean): void {}
 
 }

@@ -1,14 +1,15 @@
 {
   "name": "6502-emulator",
   "version": "1.0.0",
-  "description": "Emulator for the A.C. Wright Design 6502 project",
+  "description": "Emulator for the A.C. Wright 6502 project",
   "main": "index.js",
   "bin": {
-    "x6502": "./dist/index.js"
+    "ac6502": "./dist/index.js"
   },
   "scripts": {
     "build": "npx tsc",
     "start": "node ./dist/index.js",
+    "woz": "node ./dist/index.js -p /dev/tty.usbserial-FTDMBHZ7 -r /Users/acwright/Developer/Assembly/6502-ASM/Wozmon/Wozmon.bin",
     "test": "NODE_OPTIONS='--no-experimental-webstorage' jest",
     "test:watch": "NODE_OPTIONS='--no-experimental-webstorage' jest --watch",
     "test:coverage": "NODE_OPTIONS='--no-experimental-webstorage' jest --coverage --coverageReporters=text-summary --coverageReporters=lcov"

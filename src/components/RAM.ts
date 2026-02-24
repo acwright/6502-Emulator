@@ -14,4 +14,10 @@ export class RAM {
     this.data[address] = data
   }
 
+  reset(coldStart: boolean): void {
+    if (coldStart) {
+      this.data.fill(0x00)
+    }
+  }
+  
 }

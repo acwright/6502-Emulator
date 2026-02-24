@@ -5,7 +5,7 @@ export class ROM {
   static CODE: number = 0xA000
   static SIZE: number = ROM.END - ROM.START + 1
 
-  data: number[] = [...Array(ROM.SIZE)].fill(0xEA)
+  data: number[] = [...Array(ROM.SIZE)].fill(0x00)
 
   read(address: number): number {
     return this.data[address]
@@ -16,5 +16,4 @@ export class ROM {
 
     this.data = data
   }
-
 }

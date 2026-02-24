@@ -1,19 +1,13 @@
-import { IO, IODescription } from '../IO'
+import { IO } from '../IO'
 
 export class RTCCard implements IO {
-
-  static DESCRIPTION: IODescription = { className: 'RTCCard', title: 'RTC Card' }
 
   raiseIRQ = () => {}
   raiseNMI = () => {}
 
   read(address: number): number { return 0 }
   write(address: number, data: number): void {}
-  tick(): void {}
-  reset(): void {}
-  
-  description(): IODescription {
-    return RTCCard.DESCRIPTION
-  }
+  tick(frequency: number): void {}
+  reset(coldStart: boolean): void {}
 
 }

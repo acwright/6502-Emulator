@@ -44,8 +44,6 @@ export class CPU {
   ) {
     this.read = read
     this.write = write
-
-    this.reset()
   }
 
   //
@@ -182,7 +180,10 @@ export class CPU {
   //
 
   private fetch() {
-    if (!(this.instructionTable[this.opcode].addrMode == this.IMP)) {
+    // For IMP addressing mode (opcode 0x0A, 0x2A, 0x4A, 0x6A), fetched is already set to this.a
+    // Don't fetch from memory for those instructions
+    const accumulatorOpcodes = [0x0A, 0x2A, 0x4A, 0x6A]
+    if (!accumulatorOpcodes.includes(this.opcode)) {
       this.fetched = this.read(this.addrAbs)
     }
   }
@@ -271,7 +272,7 @@ export class CPU {
     this.addrRel = this.read(this.pc)
     this.incPC()
     if ((this.addrRel & 0x80) != 0) {
-      this.addrRel = (this.addrRel << 24) >> 24
+      this.addrRel |= 0xFFFFFF00
     }
     return 0
   }
@@ -396,7 +397,8 @@ export class CPU {
     this.setFlag(CPU.C, (this.temp & 0xFF00) > 0)
     this.setFlag(CPU.Z, (this.temp & 0x00FF) == 0x00)
     this.setFlag(CPU.N, (this.temp & 0x80) != 0)
-    if (this.instructionTable[this.opcode].addrMode == this.IMP) {
+    // Opcode 0x0A is ASL A (accumulator mode)
+    if (this.opcode === 0x0A) {
       this.a = this.temp & 0x00FF
     } else {
       this.write(this.addrAbs, this.temp & 0x00FF)
@@ -692,7 +694,8 @@ export class CPU {
     this.temp = this.fetched >> 1
     this.setFlag(CPU.Z, (this.temp & 0x00FF) == 0x0000)
     this.setFlag(CPU.N, (this.temp & 0x0080) != 0)
-    if (this.instructionTable[this.opcode].addrMode == this.IMP) {
+    // Opcode 0x4A is LSR A (accumulator mode)
+    if (this.opcode === 0x4A) {
       this.a = this.temp & 0x00FF
     } else {
       this.write(this.addrAbs, this.temp & 0x00FF)
@@ -756,7 +759,8 @@ export class CPU {
     this.setFlag(CPU.C, (this.temp & 0xFF00) != 0)
     this.setFlag(CPU.Z, (this.temp & 0x00FF) == 0x00)
     this.setFlag(CPU.N, (this.temp & 0x0080) != 0)
-    if (this.instructionTable[this.opcode].addrMode == this.IMP) {
+    // Opcode 0x2A is ROL A (accumulator mode)
+    if (this.opcode === 0x2A) {
       this.a = this.temp & 0x00FF
     } else {
       this.write(this.addrAbs, this.temp & 0x00FF)
@@ -770,7 +774,8 @@ export class CPU {
     this.setFlag(CPU.C, (this.fetched & 0x01) != 0)
     this.setFlag(CPU.Z, (this.temp & 0x00FF) == 0x00)
     this.setFlag(CPU.N, (this.temp & 0x0080) != 0)
-    if (this.instructionTable[this.opcode].addrMode == this.IMP) {
+    // Opcode 0x6A is ROR A (accumulator mode)
+    if (this.opcode === 0x6A) {
       this.a = this.temp & 0x00FF
     } else {
       this.write(this.addrAbs, this.temp & 0x00FF)

@@ -21,6 +21,4 @@ export class Cart {
     this.data = data
   }
 
-  reset(): void {}
-
 }
