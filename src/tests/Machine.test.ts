@@ -1,5 +1,4 @@
 import { Machine } from '../components/Machine'
-import { readFile } from 'fs/promises'
 
 test('Machine can init', () => {
 	expect(new Machine()).not.toBeNull()

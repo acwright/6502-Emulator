@@ -1,5 +1,4 @@
 import { CPU } from '../components/CPU'
-import { readFile } from 'fs/promises'
 
 test('CPU can init', () => {
 	expect(new CPU(() => { return 0 }, () => {})).not.toBeNull()

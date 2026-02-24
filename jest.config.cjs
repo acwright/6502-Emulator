@@ -5,6 +5,5 @@ module.exports = {
   moduleFileExtensions: ['ts', 'js', 'json'],
   clearMocks: true,
   collectCoverage: true,
-  collectCoverageFrom: ['src/**/*.ts', '!src/index.ts'],
-  testPathIgnorePatterns: ['Machine.test.ts']
+  collectCoverageFrom: ['src/**/*.ts', '!src/index.ts']
 }

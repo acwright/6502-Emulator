@@ -3,7 +3,7 @@
 import figlet from 'figlet'
 import { Machine } from './components/Machine'
 import { Command } from 'commander'
-import sdl, { Sdl } from '@kmamal/sdl'
+import sdl from '@kmamal/sdl'
 
 const VERSION = '1.0.0'
 

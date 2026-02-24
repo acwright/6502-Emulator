@@ -1,5 +1,4 @@
 import { Cart } from '../components/Cart'
-import { readFile } from 'fs/promises'
 
 test('Cart can init', () => {
 	expect(new Cart()).not.toBeNull()

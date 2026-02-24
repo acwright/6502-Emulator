@@ -29,16 +29,15 @@
   "type": "commonjs",
   "dependencies": {
     "@kmamal/sdl": "^0.11.13",
-    "commander": "^14.0.1",
-    "figlet": "^1.9.3",
-    "uuid": "^13.0.0",
+    "commander": "^14.0.3",
+    "figlet": "^1.10.0",
     "serialport": "^13.0.0"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",
     "@types/node": "^25.3.0",
     "jest": "^30.2.0",
-    "ts-jest": "^29.4.5",
+    "ts-jest": "^29.4.6",
     "typescript": "^5.9.3"
   }
 }

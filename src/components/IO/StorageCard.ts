@@ -1,11 +1,8 @@
-import { v4 as uuidv4 } from 'uuid'
 import { IO, IODescription } from '../IO'
 
 export class StorageCard implements IO {
 
   static DESCRIPTION: IODescription = { className: 'StorageCard', title: 'Storage Card' }
-
-  id: string = uuidv4()
 
   raiseIRQ = () => {}
   raiseNMI = () => {}
