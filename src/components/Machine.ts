@@ -63,6 +63,10 @@ export class Machine {
     this.io7 = new SoundCard()
     this.io8 = new VideoCard()
 
+    // Connect RTCCard IRQ/NMI to CPU
+    this.io3.raiseIRQ = () => this.cpu.irq()
+    this.io3.raiseNMI = () => this.cpu.nmi()
+
     // Connect SerialCard IRQ/NMI to CPU
     this.io5.raiseIRQ = () => this.cpu.irq()
     this.io5.raiseNMI = () => this.cpu.nmi()
