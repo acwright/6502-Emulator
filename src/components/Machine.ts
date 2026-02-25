@@ -16,9 +16,12 @@ export class Machine {
   static MAX_FPS: number = 60
   static FRAME_INTERVAL_MS: number = 1000 / Machine.MAX_FPS
 
+  private ioCycleAccumulator: number = 0
+  private ioTickInterval: number = 128 // adjust (64/128/256)
+
   cpu: CPU
   ram: RAM
-  rom: ROM  
+  rom: ROM
   io1: RAMCard
   io2: RAMCard
   io3: RTCCard
@@ -32,13 +35,13 @@ export class Machine {
 
   isAlive: boolean = false
   isRunning: boolean = false
-  frequency: number = 1000000 // 1 MHz
+  frequency: number = 2000000 // 2 MHz
   scale: number = 2
   frames: number = 0
   frameDelay: number = 0
   frameDelayCount: number = 0
-  startTime: number = 0
-  previousTime: number = Date.now()
+  startTime: number = Date.now()
+  previousTime: number = performance.now()
 
   transmit?: (data: number) => void
   render?: (buffer: Buffer<ArrayBufferLike>) => void
@@ -109,6 +112,56 @@ export class Machine {
     this.isAlive = false
   }
 
+  run(): void {
+    this.isRunning = true
+  }
+
+  stop(): void {
+    this.isRunning = false
+  }
+
+  step(): void {
+    // Step through one complete instruction
+    const cyclesExecuted = this.cpu.step()
+    
+    // Tick IO cards for each cycle of the instruction
+    for (let i = 0; i < cyclesExecuted; i++) {
+      // SerialCard must be cycle-accurate
+      this.io5.tick(this.frequency)
+      
+      this.ioCycleAccumulator++
+      if (this.ioCycleAccumulator >= this.ioTickInterval) {
+        // Skip ticking RAMCard IO1 and IO2 since they have no timing behavior
+        this.io3.tick(this.frequency)
+        this.io4.tick(this.frequency)
+        this.io6.tick(this.frequency)
+        this.io7.tick(this.frequency)
+        this.io8.tick(this.frequency)
+        this.ioCycleAccumulator = 0
+      }
+    }
+  }
+
+  tick(): void {
+    // Execute one CPU clock cycle
+    this.cpu.tick()
+    
+    // SerialCard must be cycle-accurate
+    this.io5.tick(this.frequency)
+    
+    // Tick other IO cards at intervals
+    this.ioCycleAccumulator++
+    if (this.ioCycleAccumulator >= this.ioTickInterval) {
+      // Skip ticking RAMCard IO1 and IO2 since they have no timing behavior
+      this.io3.tick(this.frequency)
+      this.io4.tick(this.frequency)
+      this.io6.tick(this.frequency)
+      this.io7.tick(this.frequency)
+      this.io8.tick(this.frequency)
+      this.ioCycleAccumulator = 0
+    }
+  }
+
   onReceive(data: number): void {
     this.io5.onData(data) // Pass data to Serial card
   }
@@ -127,55 +180,50 @@ export class Machine {
 
   private loop(): void {
     if (!this.isAlive) { return }
-    
+
+    const now = performance.now()
+    const elapsedMs = now - this.previousTime
+    this.previousTime = now
+
     if (this.isRunning) {
-      const currentTime = Date.now()
-      const deltaTime = currentTime - this.previousTime;
-      this.previousTime = currentTime
-      const fps = 1 / (deltaTime / 1000)
-      const frequency = this.frequency
+      const ticksPerMs = this.frequency / 1000
+      let accumulator = (this as any)._accumulatorMs ?? 0
+      accumulator += elapsedMs
 
-      if (frequency >= fps) {
-        const cycles = Math.floor(frequency / fps)
+      const maxCatchUpMs = 250
+      if (accumulator > maxCatchUpMs) accumulator = maxCatchUpMs
 
-        for (let i = 0; i < cycles; i++) {
+      const ticksToRun = Math.floor(accumulator * ticksPerMs)
+      if (ticksToRun > 0) {
+        for (let i = 0; i < ticksToRun; i++) {
           this.cpu.tick()
-          this.io1.tick(frequency)
-          this.io2.tick(frequency)
-          this.io3.tick(frequency)
-          this.io4.tick(frequency)
-          this.io5.tick(frequency)
-          this.io6.tick(frequency)
-          this.io7.tick(frequency)
-          this.io8.tick(frequency)
-        }
-      } else {
-        this.frameDelay = Math.floor(fps / frequency)
 
-        if (this.frameDelayCount >= this.frameDelay) {
-          this.cpu.tick()
-          this.io1.tick(frequency)
-          this.io2.tick(frequency)
-          this.io3.tick(frequency)
-          this.io4.tick(frequency)
-          this.io5.tick(frequency)
-          this.io6.tick(frequency)
-          this.io7.tick(frequency)
-          this.io8.tick(frequency)
+          // SerialCard must be cycle-accurate
+          this.io5.tick(this.frequency)
 
-          this.frameDelayCount = 0
-        } else {
-          this.frameDelayCount += 1
+          this.ioCycleAccumulator++
+          if (this.ioCycleAccumulator >= this.ioTickInterval) {
+            // Skip ticking RAMCard IO1 and IO2 since they have no timing behavior
+            this.io3.tick(this.frequency)
+            this.io4.tick(this.frequency)
+            this.io6.tick(this.frequency)
+            this.io7.tick(this.frequency)
+            this.io8.tick(this.frequency)
+            this.ioCycleAccumulator = 0
+          }
         }
+        accumulator -= ticksToRun / ticksPerMs
       }
+
+      (this as any)._accumulatorMs = accumulator
     }
 
     if (this.render) {
       this.render(this.io8.buffer)
+      this.frames += 1
     }
-    this.frames += 1
 
-    setTimeout(this.loop.bind(this), Math.floor(Machine.FRAME_INTERVAL_MS))
+    setImmediate(() => this.loop())
   }
 
   //

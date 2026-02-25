@@ -11,10 +11,6 @@ export class Cart {
     return this.data[address]
   }
 
-  write(address: number, data: number): void {
-    this.data[address] = data
-  }
-
   load(data: number[]): void {
     if (data.length != Cart.SIZE) { return }
 

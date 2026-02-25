@@ -1,5 +1,15 @@
 import { IO } from '../IO'
 
+/**
+ * RAMCard - Emulates banked RAM with 256KB total capacity
+ * 
+ * Provides 256KB of banked RAM divided into 256 banks of 1KB each.
+ * A bank control register at address 0x3FF selects which bank is currently visible.
+ * 
+ * Address Map:
+ * $000-$3FE: Bank data (1K window into selected bank)
+ * $3FF: Bank control register (read/write)
+ */
 export class RAMCard implements IO {
 
   static TOTAL_SIZE: number = 256 * 1024 // 256k bytes
@@ -13,6 +23,9 @@ export class RAMCard implements IO {
   raiseIRQ = () => {}
   raiseNMI = () => {}
 
+  /**
+   * Read from RAM or bank control register
+   */
   read(address: number): number {
     // Reading from bank control register returns current bank number
     if (address === RAMCard.BANK_CONTROL_REGISTER) {
@@ -23,6 +36,9 @@ export class RAMCard implements IO {
     return this.data[this.currentBank * RAMCard.BANK_SIZE + address]
   }
 
+  /**
+   * Write to RAM or bank control register
+   */
   write(address: number, data: number): void {
     // Writing to bank control register switches banks
     if (address === RAMCard.BANK_CONTROL_REGISTER) {
@@ -30,12 +46,18 @@ export class RAMCard implements IO {
       return
     }
     
-    // Calculate actual address in RAM: bank * bank_size + offset as store data
+    // Calculate actual address in RAM: bank * bank_size + offset and store data
     this.data[this.currentBank * RAMCard.BANK_SIZE + address] = data & 0xFF
   }
   
+  /**
+   * Tick - no timing behavior for RAM
+   */
   tick(frequency: number): void {}
   
+  /**
+   * Reset the RAM card
+   */
   reset(coldStart: boolean): void {
     if (coldStart) {
       this.currentBank = 0

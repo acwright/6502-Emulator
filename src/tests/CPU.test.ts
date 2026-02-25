@@ -1360,6 +1360,590 @@ describe('CPU', () => {
     })
   })
 
+  describe('65C02 Instructions', () => {
+    describe('BRA - Branch Always', () => {
+      test('should always branch forward', () => {
+        memory[0x8000] = 0x80  // BRA +4
+        memory[0x8001] = 0x04
+        memory[0x8002] = 0xEA  // NOP (should be skipped)
+        memory[0x8003] = 0xEA  // NOP (should be skipped)
+        memory[0x8004] = 0xEA  // NOP (should be skipped)
+        memory[0x8005] = 0xEA  // NOP (should be skipped)
+        memory[0x8006] = 0xA9  // LDA #$AA
+        memory[0x8007] = 0xAA
+        memory[0xFFFC] = 0x00
+        memory[0xFFFD] = 0x80
+        
+        cpu.reset()
+        cpu.step()  // BRA
+        cpu.step()  // LDA
+        
+        expect(cpu.a).toBe(0xAA)
+        expect(cpu.pc).toBe(0x8008)
+      })
+
+      test('should always branch backward', () => {
+        memory[0x8000] = 0xA9  // LDA #$55
+        memory[0x8001] = 0x55
+        memory[0x8002] = 0x80  // BRA -4 (back to LDA)
+        memory[0x8003] = 0xFC  // -4 in signed byte
+        memory[0xFFFC] = 0x00
+        memory[0xFFFD] = 0x80
+        
+        cpu.reset()
+        cpu.step()  // LDA (first time)
+        cpu.step()  // BRA
+        
+        expect(cpu.pc).toBe(0x8000)
+        expect(cpu.a).toBe(0x55)
+      })
+    })
+
+    describe('PHX/PLX - Push/Pull X Register', () => {
+      test('PHX should push X register to stack', () => {
+        memory[0x8000] = 0xDA  // PHX
+        memory[0xFFFC] = 0x00
+        memory[0xFFFD] = 0x80
+        
+        cpu.reset()
+        cpu.x = 0x42
+        const initialSP = cpu.sp
+        
+        cpu.step()
+        
+        expect(memory[0x0100 + initialSP]).toBe(0x42)
+        expect(cpu.sp).toBe(initialSP - 1)
+      })
+
+      test('PLX should pull X register from stack', () => {
+        memory[0x8000] = 0xFA  // PLX
+        memory[0xFFFC] = 0x00
+        memory[0xFFFD] = 0x80
+        
+        cpu.reset()
+        memory[0x0100 + cpu.sp + 1] = 0x77
+        
+        cpu.step()
+        
+        expect(cpu.x).toBe(0x77)
+      })
+
+      test('PLX should set zero flag when pulling zero', () => {
+        memory[0x8000] = 0xFA  // PLX
+        memory[0xFFFC] = 0x00
+        memory[0xFFFD] = 0x80
+        
+        cpu.reset()
+        memory[0x0100 + cpu.sp + 1] = 0x00
+        
+        cpu.step()
+        
+        expect(cpu.x).toBe(0x00)
+        expect(cpu.st & CPU.Z).toBe(CPU.Z)
+      })
+
+      test('PLX should set negative flag when pulling negative value', () => {
+        memory[0x8000] = 0xFA  // PLX
+        memory[0xFFFC] = 0x00
+        memory[0xFFFD] = 0x80
+        
+        cpu.reset()
+        memory[0x0100 + cpu.sp + 1] = 0x80
+        
+        cpu.step()
+        
+        expect(cpu.x).toBe(0x80)
+        expect(cpu.st & CPU.N).toBe(CPU.N)
+      })
+    })
+
+    describe('PHY/PLY - Push/Pull Y Register', () => {
+      test('PHY should push Y register to stack', () => {
+        memory[0x8000] = 0x5A  // PHY
+        memory[0xFFFC] = 0x00
+        memory[0xFFFD] = 0x80
+        
+        cpu.reset()
+        cpu.y = 0x33
+        const initialSP = cpu.sp
+        
+        cpu.step()
+        
+        expect(memory[0x0100 + initialSP]).toBe(0x33)
+        expect(cpu.sp).toBe(initialSP - 1)
+      })
+
+      test('PLY should pull Y register from stack', () => {
+        memory[0x8000] = 0x7A  // PLY
+        memory[0xFFFC] = 0x00
+        memory[0xFFFD] = 0x80
+        
+        cpu.reset()
+        memory[0x0100 + cpu.sp + 1] = 0x99
+        
+        cpu.step()
+        
+        expect(cpu.y).toBe(0x99)
+      })
+
+      test('PLY should set flags correctly', () => {
+        memory[0x8000] = 0x7A  // PLY
+        memory[0xFFFC] = 0x00
+        memory[0xFFFD] = 0x80
+        
+        cpu.reset()
+        memory[0x0100 + cpu.sp + 1] = 0x80
+        
+        cpu.step()
+        
+        expect(cpu.y).toBe(0x80)
+        expect(cpu.st & CPU.N).toBe(CPU.N)
+      })
+    })
+
+    describe('STZ - Store Zero', () => {
+      test('STZ zero page should store zero', () => {
+        memory[0x8000] = 0x64  // STZ $10
+        memory[0x8001] = 0x10
+        memory[0xFFFC] = 0x00
+        memory[0xFFFD] = 0x80
+        
+        memory[0x0010] = 0xFF  // Set to non-zero first
+        
+        cpu.reset()
+        cpu.step()
+        
+        expect(memory[0x0010]).toBe(0x00)
+      })
+
+      test('STZ zero page,X should store zero with X offset', () => {
+        memory[0x8000] = 0x74  // STZ $10,X
+        memory[0x8001] = 0x10
+        memory[0xFFFC] = 0x00
+        memory[0xFFFD] = 0x80
+        
+        memory[0x0015] = 0xFF
+        
+        cpu.reset()
+        cpu.x = 0x05
+        cpu.step()
+        
+        expect(memory[0x0015]).toBe(0x00)
+      })
+
+      test('STZ absolute should store zero', () => {
+        memory[0x8000] = 0x9C  // STZ $1234
+        memory[0x8001] = 0x34
+        memory[0x8002] = 0x12
+        memory[0xFFFC] = 0x00
+        memory[0xFFFD] = 0x80
+        
+        memory[0x1234] = 0xFF
+        
+        cpu.reset()
+        cpu.step()
+        
+        expect(memory[0x1234]).toBe(0x00)
+      })
+
+      test('STZ absolute,X should store zero with X offset', () => {
+        memory[0x8000] = 0x9E  // STZ $1234,X
+        memory[0x8001] = 0x34
+        memory[0x8002] = 0x12
+        memory[0xFFFC] = 0x00
+        memory[0xFFFD] = 0x80
+        
+        memory[0x1239] = 0xFF
+        
+        cpu.reset()
+        cpu.x = 0x05
+        cpu.step()
+        
+        expect(memory[0x1239]).toBe(0x00)
+      })
+    })
+
+    describe('TRB - Test and Reset Bits', () => {
+      test('TRB zero page should reset bits and test', () => {
+        memory[0x8000] = 0x14  // TRB $10
+        memory[0x8001] = 0x10
+        memory[0xFFFC] = 0x00
+        memory[0xFFFD] = 0x80
+        
+        memory[0x0010] = 0xFF
+        
+        cpu.reset()
+        cpu.a = 0x0F  // Lower 4 bits
+        cpu.step()
+        
+        expect(memory[0x0010]).toBe(0xF0)  // Lower 4 bits cleared
+        expect(cpu.st & CPU.Z).toBe(0)  // Not zero because A & memory was non-zero
+      })
+
+      test('TRB should set zero flag when A & memory is zero', () => {
+        memory[0x8000] = 0x14  // TRB $10
+        memory[0x8001] = 0x10
+        memory[0xFFFC] = 0x00
+        memory[0xFFFD] = 0x80
+        
+        memory[0x0010] = 0xF0
+        
+        cpu.reset()
+        cpu.a = 0x0F
+        cpu.step()
+        
+        expect(cpu.st & CPU.Z).toBe(CPU.Z)
+      })
+
+      test('TRB absolute should work', () => {
+        memory[0x8000] = 0x1C  // TRB $1234
+        memory[0x8001] = 0x34
+        memory[0x8002] = 0x12
+        memory[0xFFFC] = 0x00
+        memory[0xFFFD] = 0x80
+        
+        memory[0x1234] = 0xAA  // 10101010
+        
+        cpu.reset()
+        cpu.a = 0x55  // 01010101
+        cpu.step()
+        
+        expect(memory[0x1234]).toBe(0xAA)  // No bits cleared since no overlap
+        expect(cpu.st & CPU.Z).toBe(CPU.Z)
+      })
+    })
+
+    describe('TSB - Test and Set Bits', () => {
+      test('TSB zero page should set bits and test', () => {
+        memory[0x8000] = 0x04  // TSB $10
+        memory[0x8001] = 0x10
+        memory[0xFFFC] = 0x00
+        memory[0xFFFD] = 0x80
+        
+        memory[0x0010] = 0xF0
+        
+        cpu.reset()
+        cpu.a = 0x0F
+        cpu.step()
+        
+        expect(memory[0x0010]).toBe(0xFF)  // All bits set
+        expect(cpu.st & CPU.Z).toBe(CPU.Z)  // Was zero because A & original memory was zero
+      })
+
+      test('TSB should not set zero flag when A & memory is non-zero', () => {
+        memory[0x8000] = 0x04  // TSB $10
+        memory[0x8001] = 0x10
+        memory[0xFFFC] = 0x00
+        memory[0xFFFD] = 0x80
+        
+        memory[0x0010] = 0xFF
+        
+        cpu.reset()
+        cpu.a = 0x0F
+        cpu.step()
+        
+        expect(memory[0x0010]).toBe(0xFF)
+        expect(cpu.st & CPU.Z).toBe(0)
+      })
+
+      test('TSB absolute should work', () => {
+        memory[0x8000] = 0x0C  // TSB $1234
+        memory[0x8001] = 0x34
+        memory[0x8002] = 0x12
+        memory[0xFFFC] = 0x00
+        memory[0xFFFD] = 0x80
+        
+        memory[0x1234] = 0x00
+        
+        cpu.reset()
+        cpu.a = 0x42
+        cpu.step()
+        
+        expect(memory[0x1234]).toBe(0x42)
+      })
+    })
+
+    describe('BIT Immediate', () => {
+      test('BIT immediate should test bits without affecting N and V flags', () => {
+        memory[0x8000] = 0x89  // BIT #$42
+        memory[0x8001] = 0x42
+        memory[0xFFFC] = 0x00
+        memory[0xFFFD] = 0x80
+        
+        cpu.reset()
+        cpu.a = 0x42
+        cpu.step()
+        
+        expect(cpu.st & CPU.Z).toBe(0)  // Not zero because 0x42 & 0x42 = 0x42
+      })
+
+      test('BIT immediate should set zero flag when result is zero', () => {
+        memory[0x8000] = 0x89  // BIT #$0F
+        memory[0x8001] = 0x0F
+        memory[0xFFFC] = 0x00
+        memory[0xFFFD] = 0x80
+        
+        cpu.reset()
+        cpu.a = 0xF0
+        cpu.step()
+        
+        expect(cpu.st & CPU.Z).toBe(CPU.Z)
+      })
+    })
+
+    describe('JMP (addr,X) - Indexed Indirect', () => {
+      test('JMP (addr,X) should jump to address in table indexed by X', () => {
+        memory[0x8000] = 0x7C  // JMP ($1000,X)
+        memory[0x8001] = 0x00
+        memory[0x8002] = 0x10
+        memory[0xFFFC] = 0x00
+        memory[0xFFFD] = 0x80
+        
+        // Jump table at $1005 (when X=5) contains address $2000
+        memory[0x1005] = 0x00
+        memory[0x1006] = 0x20
+        
+        cpu.reset()
+        cpu.x = 0x05
+        cpu.step()
+        
+        expect(cpu.pc).toBe(0x2000)
+      })
+
+      test('JMP (addr,X) should work with different X values', () => {
+        memory[0x8000] = 0x7C  // JMP ($1000,X)
+        memory[0x8001] = 0x00
+        memory[0x8002] = 0x10
+        memory[0xFFFC] = 0x00
+        memory[0xFFFD] = 0x80
+        
+        memory[0x100A] = 0x50
+        memory[0x100B] = 0x30
+        
+        cpu.reset()
+        cpu.x = 0x0A
+        cpu.step()
+        
+        expect(cpu.pc).toBe(0x3050)
+      })
+    })
+  })
+
+  describe('WDC 65C02 Instructions', () => {
+    describe('RMB/SMB - Reset/Set Memory Bit', () => {
+      test('RMB0 should clear bit 0', () => {
+        memory[0x8000] = 0x07  // RMB0 $10
+        memory[0x8001] = 0x10
+        memory[0xFFFC] = 0x00
+        memory[0xFFFD] = 0x80
+        
+        memory[0x0010] = 0xFF
+        
+        cpu.reset()
+        cpu.step()
+        
+        expect(memory[0x0010]).toBe(0xFE)  // 11111110
+      })
+
+      test('RMB7 should clear bit 7', () => {
+        memory[0x8000] = 0x77  // RMB7 $10
+        memory[0x8001] = 0x10
+        memory[0xFFFC] = 0x00
+        memory[0xFFFD] = 0x80
+        
+        memory[0x0010] = 0xFF
+        
+        cpu.reset()
+        cpu.step()
+        
+        expect(memory[0x0010]).toBe(0x7F)  // 01111111
+      })
+
+      test('SMB0 should set bit 0', () => {
+        memory[0x8000] = 0x87  // SMB0 $10
+        memory[0x8001] = 0x10
+        memory[0xFFFC] = 0x00
+        memory[0xFFFD] = 0x80
+        
+        memory[0x0010] = 0x00
+        
+        cpu.reset()
+        cpu.step()
+        
+        expect(memory[0x0010]).toBe(0x01)
+      })
+
+      test('SMB7 should set bit 7', () => {
+        memory[0x8000] = 0xF7  // SMB7 $10
+        memory[0x8001] = 0x10
+        memory[0xFFFC] = 0x00
+        memory[0xFFFD] = 0x80
+        
+        memory[0x0010] = 0x00
+        
+        cpu.reset()
+        cpu.step()
+        
+        expect(memory[0x0010]).toBe(0x80)
+      })
+
+      test('SMB3 should set bit 3', () => {
+        memory[0x8000] = 0xB7  // SMB3 $10
+        memory[0x8001] = 0x10
+        memory[0xFFFC] = 0x00
+        memory[0xFFFD] = 0x80
+        
+        memory[0x0010] = 0x00
+        
+        cpu.reset()
+        cpu.step()
+        
+        expect(memory[0x0010]).toBe(0x08)  // 00001000
+      })
+
+      test('RMB4 should clear bit 4', () => {
+        memory[0x8000] = 0x47  // RMB4 $10
+        memory[0x8001] = 0x10
+        memory[0xFFFC] = 0x00
+        memory[0xFFFD] = 0x80
+        
+        memory[0x0010] = 0xFF
+        
+        cpu.reset()
+        cpu.step()
+        
+        expect(memory[0x0010]).toBe(0xEF)  // 11101111
+      })
+    })
+
+    describe('BBR/BBS - Branch on Bit Reset/Set', () => {
+      test('BBR0 should branch when bit 0 is clear', () => {
+        memory[0x8000] = 0x0F  // BBR0 $10, +4
+        memory[0x8001] = 0x10
+        memory[0x8002] = 0x04
+        memory[0xFFFC] = 0x00
+        memory[0xFFFD] = 0x80
+        
+        memory[0x0010] = 0xFE  // Bit 0 is clear
+        
+        cpu.reset()
+        cpu.step()
+        
+        expect(cpu.pc).toBe(0x8007)  // Branched forward 4 bytes
+      })
+
+      test('BBR0 should not branch when bit 0 is set', () => {
+        memory[0x8000] = 0x0F  // BBR0 $10, +4
+        memory[0x8001] = 0x10
+        memory[0x8002] = 0x04
+        memory[0xFFFC] = 0x00
+        memory[0xFFFD] = 0x80
+        
+        memory[0x0010] = 0x01  // Bit 0 is set
+        
+        cpu.reset()
+        cpu.step()
+        
+        expect(cpu.pc).toBe(0x8003)  // Did not branch
+      })
+
+      test('BBS7 should branch when bit 7 is set', () => {
+        memory[0x8000] = 0xFF  // BBS7 $10, +4
+        memory[0x8001] = 0x10
+        memory[0x8002] = 0x04
+        memory[0xFFFC] = 0x00
+        memory[0xFFFD] = 0x80
+        
+        memory[0x0010] = 0x80  // Bit 7 is set
+        
+        cpu.reset()
+        cpu.step()
+        
+        expect(cpu.pc).toBe(0x8007)  // Branched
+      })
+
+      test('BBS7 should not branch when bit 7 is clear', () => {
+        memory[0x8000] = 0xFF  // BBS7 $10, +4
+        memory[0x8001] = 0x10
+        memory[0x8002] = 0x04
+        memory[0xFFFC] = 0x00
+        memory[0xFFFD] = 0x80
+        
+        memory[0x0010] = 0x7F  // Bit 7 is clear
+        
+        cpu.reset()
+        cpu.step()
+        
+        expect(cpu.pc).toBe(0x8003)  // Did not branch
+      })
+
+      test('BBS3 should branch when bit 3 is set', () => {
+        memory[0x8000] = 0xBF  // BBS3 $10, +2
+        memory[0x8001] = 0x10
+        memory[0x8002] = 0x02
+        memory[0xFFFC] = 0x00
+        memory[0xFFFD] = 0x80
+        
+        memory[0x0010] = 0x08  // Bit 3 is set
+        
+        cpu.reset()
+        cpu.step()
+        
+        expect(cpu.pc).toBe(0x8005)  // Branched
+      })
+
+      test('BBR4 should branch backward when bit 4 is clear', () => {
+        memory[0x8000] = 0xA9  // LDA #$55
+        memory[0x8001] = 0x55
+        memory[0x8002] = 0x4F  // BBR4 $10, -5
+        memory[0x8003] = 0x10
+        memory[0x8004] = 0xFB  // -5 in signed byte
+        memory[0xFFFC] = 0x00
+        memory[0xFFFD] = 0x80
+        
+        memory[0x0010] = 0xEF  // Bit 4 is clear
+        
+        cpu.reset()
+        cpu.step()  // LDA
+        cpu.step()  // BBR4
+        
+        expect(cpu.pc).toBe(0x8000)  // Branched back
+      })
+    })
+
+    describe('WAI - Wait for Interrupt', () => {
+      test('WAI should execute and consume cycles', () => {
+        memory[0x8000] = 0xCB  // WAI
+        memory[0xFFFC] = 0x00
+        memory[0xFFFD] = 0x80
+        
+        cpu.reset()
+        const initialCycles = cpu.cycles
+        cpu.step()
+        
+        // WAI executes and consumes cycles (instruction completes)
+        expect(cpu.cycles).toBeGreaterThan(initialCycles)
+        expect(cpu.pc).toBe(0x8001)  // PC advanced past WAI
+      })
+    })
+
+    describe('STP - Stop the Processor', () => {
+      test('STP should execute and consume cycles', () => {
+        memory[0x8000] = 0xDB  // STP
+        memory[0xFFFC] = 0x00
+        memory[0xFFFD] = 0x80
+        
+        cpu.reset()
+        const initialCycles = cpu.cycles
+        cpu.step()
+        
+        // STP executes and consumes cycles (instruction completes)
+        expect(cpu.cycles).toBeGreaterThan(initialCycles)
+        expect(cpu.pc).toBe(0x8001)  // PC advanced past STP
+      })
+    })
+  })
+
   describe('Complex Programs', () => {
     test('should execute a simple loop correctly', () => {
       // Loop that adds 1 to accumulator 5 times
@@ -1390,6 +1974,70 @@ describe('CPU', () => {
       
       expect(cpu.a).toBe(0x05)
       expect(cpu.x).toBe(0x00)
+    })
+
+    test('should use 65C02 instructions in a program', () => {
+      // Use STZ and BRA in a program
+      memory[0x8000] = 0x9C  // STZ $1234 - Clear memory location
+      memory[0x8001] = 0x34
+      memory[0x8002] = 0x12
+      memory[0x8003] = 0xA9  // LDA #$42
+      memory[0x8004] = 0x42
+      memory[0x8005] = 0x8D  // STA $1234
+      memory[0x8006] = 0x34
+      memory[0x8007] = 0x12
+      memory[0x8008] = 0x80  // BRA +2
+      memory[0x8009] = 0x02
+      memory[0x800A] = 0xEA  // NOP (skipped)
+      memory[0x800B] = 0xEA  // NOP (skipped)
+      memory[0x800C] = 0xAD  // LDA $1234
+      memory[0x800D] = 0x34
+      memory[0x800E] = 0x12
+      memory[0xFFFC] = 0x00
+      memory[0xFFFD] = 0x80
+      
+      memory[0x1234] = 0xFF  // Initially set
+      
+      cpu.reset()
+      cpu.step()  // STZ
+      expect(memory[0x1234]).toBe(0x00)
+      
+      cpu.step()  // LDA
+      cpu.step()  // STA
+      expect(memory[0x1234]).toBe(0x42)
+      
+      cpu.step()  // BRA
+      expect(cpu.pc).toBe(0x800C)
+      
+      cpu.step()  // LDA
+      expect(cpu.a).toBe(0x42)
+    })
+
+    test('should use WDC 65C02 bit manipulation in a program', () => {
+      // Set bit 3, then test it and branch
+      memory[0x8000] = 0xB7  // SMB3 $10
+      memory[0x8001] = 0x10
+      memory[0x8002] = 0xBF  // BBS3 $10, +2
+      memory[0x8003] = 0x10
+      memory[0x8004] = 0x02
+      memory[0x8005] = 0xA9  // LDA #$00 (should be skipped)
+      memory[0x8006] = 0x00
+      memory[0x8007] = 0xA9  // LDA #$FF (should execute)
+      memory[0x8008] = 0xFF
+      memory[0xFFFC] = 0x00
+      memory[0xFFFD] = 0x80
+      
+      memory[0x0010] = 0x00
+      
+      cpu.reset()
+      cpu.step()  // SMB3
+      expect(memory[0x0010]).toBe(0x08)
+      
+      cpu.step()  // BBS3
+      expect(cpu.pc).toBe(0x8007)  // Branched (0x8005 + 2)
+      
+      cpu.step()  // LDA #$FF
+      expect(cpu.a).toBe(0xFF)
     })
   })
 })

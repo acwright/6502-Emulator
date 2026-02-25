@@ -18,7 +18,7 @@ program
   .version(VERSION, '-v, --version', 'Output the current emulator version')
   .helpOption('-h, --help', 'Output help / options')
   .option('-c, --cart <path>', 'Path to 32K Cart binary file')
-  .option('-f, --freq <freq>', 'Set the clock frequency in Hz', '1000000')
+  .option('-f, --freq <freq>', 'Set the clock frequency in Hz', '2000000')
   .option('-r, --rom <path>', 'Path to 32K ROM binary file')
   .option('-s, --scale <scale>', 'Set the emulator scale', '2')
   .option('-b, --baudrate <baudrate>', 'Baud Rate', '9600')
@@ -126,10 +126,12 @@ if (options.scale) {
   console.log(`Scale: 1x`)
 }
 
-const window = sdl.video.createWindow({ 
+const window = sdl.video.createWindow({
   title: "6502 Emulator",
-  width: 256 * machine.scale,
-  height: 192 * machine.scale
+  width: WIDTH * machine.scale,
+  height: HEIGHT * machine.scale,
+  accelerated: true,
+  vsync: true
 })
 
 window.on('keyDown', (event) => {
@@ -146,6 +148,18 @@ window.on('keyUp', (event) => {
   if (!event.key) { return }
 
   switch (event.key) {
+    case 'f1':
+      machine.run()
+      break
+    case 'f2':
+      machine.stop()
+      break
+    case 'f3':
+      machine.step()
+      break
+    case 'f4':
+      machine.tick()
+      break
     case 'f11':
       machine.reset(true)  // Reset with cold start (clear RAM)
       break
@@ -160,18 +174,6 @@ window.on('keyUp', (event) => {
 
 machine.render = (buffer: Buffer) => {
   if (!window) { return }
-
-  //const buffer = Buffer.alloc(WIDTH * HEIGHT * 4)
-
-  // let offset = 0
-  // for (let i = 0; i < HEIGHT; i++) {
-  //   for (let j = 0; j < WIDTH; j++) {
-  //     buffer[offset++] = Math.floor(Math.random() * 256)    // R
-  //     buffer[offset++] = Math.floor(Math.random() * 256)    // G
-  //     buffer[offset++] = Math.floor(Math.random() * 256)    // B
-  //     buffer[offset++] = 255                                // A
-  //   }
-  // }
 
   window.render(WIDTH, HEIGHT, WIDTH * 4, 'rgba32', buffer)
 }
@@ -194,7 +196,7 @@ window.on('close', () => {
     'Time Elapsed': uptime / 1000,
     'CPU Cycles': machine.cpu.cycles,
     'Frames': machine.frames,
-    'Avg FPS': parseFloat((machine.frames / (uptime / 1000)).toFixed(4))
+    'Avg FPS': parseFloat((machine.frames / (uptime / 1000)).toFixed(2))
   })
 })
 

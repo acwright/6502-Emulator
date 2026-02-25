@@ -248,9 +248,8 @@ export class SerialCard implements IO {
 
   /**
    * Tick - emulate ACIA timing
-   * @param frequency CPU clock frequency in Hz (optional, defaults to 1 MHz)
    */
-  tick(frequency: number = 1_000_000): void {
+  tick(frequency: number): void {
     this.cycleCounter++
 
     // Calculate cycles per byte: (CPU_CLOCK / baud_rate) * bits_per_frame
