@@ -1,13 +1,473 @@
 import { IO } from '../IO'
+import { readFile, writeFile } from 'fs/promises'
+import { existsSync } from 'fs'
 
+/**
+ * StorageCard - Emulates a Compact Flash card in 8-bit IDE mode
+ * 
+ * Emulates a 128MB CF card with ATA-style register interface.
+ * Uses LBA (Logical Block Addressing) for sector access.
+ * 
+ * Register Map (address & 0x07):
+ * $00: Data Register (read/write)
+ * $01: Error Register (read) / Feature Register (write)
+ * $02: Sector Count Register (read/write)
+ * $03: LBA0 Register (read/write) - bits 0-7 of LBA
+ * $04: LBA1 Register (read/write) - bits 8-15 of LBA
+ * $05: LBA2 Register (read/write) - bits 16-23 of LBA
+ * $06: LBA3 Register (read/write) - bits 24-27 of LBA + mode bits
+ * $07: Status Register (read) / Command Register (write)
+ * 
+ * Supported Commands:
+ * 0x20, 0x21: Read Sector(s)
+ * 0x30, 0x31: Write Sector(s)
+ * 0xC0: Erase Sector
+ * 0xEC: Identify Drive
+ * 0xEF: Set Features (accepted but not implemented)
+ */
 export class StorageCard implements IO {
+
+  // Constants
+  private static readonly STORAGE_SIZE = 128 * 1024 * 1024  // 128MB
+  private static readonly SECTOR_SIZE = 512
+  private static readonly SECTOR_COUNT = StorageCard.STORAGE_SIZE / StorageCard.SECTOR_SIZE  // 262144 sectors
+
+  // Status Register Flags
+  private static readonly STATUS_ERR = 0x01  // Error
+  private static readonly STATUS_DRQ = 0x08  // Data Request
+  private static readonly STATUS_RDY = 0x40  // Ready
+
+  // Error Register Flags
+  private static readonly ERR_AMNF = 0x01    // Address Mark Not Found
+  private static readonly ERR_ABRT = 0x04    // Aborted Command
+  private static readonly ERR_IDNF = 0x10    // ID Not Found
+
+  // Storage and Identity data (in-memory simulation)
+  private storage: Buffer
+  private identity: Buffer
+
+  // Data buffer (512 bytes)
+  private buffer: Buffer = Buffer.alloc(StorageCard.SECTOR_SIZE)
+  private bufferIndex: number = 0
+  private commandDataSize: number = StorageCard.SECTOR_SIZE
+  private sectorOffset: number = 0
+
+  // Registers
+  private error: number = 0x00
+  private feature: number = 0x00
+  private sectorCount: number = 0x00
+  private lba0: number = 0x00
+  private lba1: number = 0x00
+  private lba2: number = 0x00
+  private lba3: number = 0xE0
+  private status: number = 0x00
+  private command: number = 0x00
+
+  // State flags
+  private isIdentifying: boolean = false
+  private isTransferring: boolean = false
 
   raiseIRQ = () => {}
   raiseNMI = () => {}
 
-  read(address: number): number { return 0 }
-  write(address: number, data: number): void {}
-  tick(frequency: number): void {}
-  reset(coldStart: boolean): void {}
+  constructor() {
+    // Initialize storage and identity buffers
+    this.storage = Buffer.alloc(StorageCard.STORAGE_SIZE, 0x00)
+    this.identity = Buffer.alloc(StorageCard.SECTOR_SIZE)
+    this.generateIdentity()
+    this.reset(true)
+  }
+
+  read(address: number): number {
+    switch (address & 0x0007) {
+      case 0x00: // Data Register
+        return this.readBuffer()
+      case 0x01: // Error Register
+        return this.error
+      case 0x02: // Sector Count Register
+        return this.sectorCount
+      case 0x03: // LBA0 Register
+        return this.lba0
+      case 0x04: // LBA1 Register
+        return this.lba1
+      case 0x05: // LBA2 Register
+        return this.lba2
+      case 0x06: // LBA3 Register
+        return this.lba3
+      case 0x07: // Status Register
+        return this.status
+      default:
+        return 0x00
+    }
+  }
+
+  write(address: number, data: number): void {
+    switch (address & 0x0007) {
+      case 0x00: // Data Register
+        this.writeBuffer(data)
+        break
+      case 0x01: // Feature Register
+        this.feature = data
+        break
+      case 0x02: // Sector Count Register
+        this.sectorCount = data
+        break
+      case 0x03: // LBA0 Register
+        this.lba0 = data
+        break
+      case 0x04: // LBA1 Register
+        this.lba1 = data
+        break
+      case 0x05: // LBA2 Register
+        this.lba2 = data
+        break
+      case 0x06: // LBA3 Register
+        this.lba3 = (data & 0x0F) | 0xE0
+        break
+      case 0x07: // Command Register
+        this.command = data
+        this.executeCommand()
+        break
+    }
+  }
+
+  tick(frequency: number): void {
+    // No timing behavior needed for this implementation
+  }
+
+  reset(coldStart: boolean): void {
+    this.bufferIndex = 0x0000
+    this.commandDataSize = StorageCard.SECTOR_SIZE
+    this.sectorOffset = 0
+
+    this.error = 0x00
+    this.feature = 0x00
+    this.sectorCount = 0x00
+    this.lba0 = 0x00
+    this.lba1 = 0x00
+    this.lba2 = 0x00
+    this.lba3 = 0xE0
+    this.status = 0x00 | StorageCard.STATUS_RDY
+    this.command = 0x00
+
+    this.isIdentifying = false
+    this.isTransferring = false
+
+    this.buffer.fill(0x00)
+  }
+
+  //
+  // Private methods
+  //
+
+  private executeCommand(): void {
+    // New command so clear errors and flags
+    this.status &= ~StorageCard.STATUS_ERR
+    this.status &= ~StorageCard.STATUS_DRQ
+    this.error = 0x00
+    this.commandDataSize = StorageCard.SECTOR_SIZE * this.sectorCount
+    this.bufferIndex = 0
+    this.sectorOffset = 0
+
+    // Check if already executing a command
+    if (this.isTransferring || this.isIdentifying) {
+      this.status |= StorageCard.STATUS_ERR
+      this.error |= StorageCard.ERR_ABRT
+      return
+    }
+
+    switch (this.command) {
+      case 0xC0: { // Erase sector
+        if (!this.sectorValid()) {
+          this.status |= StorageCard.STATUS_ERR
+          this.error |= StorageCard.ERR_ABRT | StorageCard.ERR_IDNF
+        } else {
+          const offset = this.sectorIndex() * StorageCard.SECTOR_SIZE
+          this.storage.fill(0x00, offset, offset + StorageCard.SECTOR_SIZE)
+        }
+        break
+      }
+
+      case 0xEC: { // Identify drive
+        this.identity.copy(this.buffer, 0, 0, StorageCard.SECTOR_SIZE)
+        this.commandDataSize = StorageCard.SECTOR_SIZE
+        this.status |= StorageCard.STATUS_DRQ
+        this.isIdentifying = true
+        break
+      }
+
+      case 0x20: // Read sector
+      case 0x21:
+        if (!this.sectorValid()) {
+          this.status |= StorageCard.STATUS_ERR
+          this.error |= StorageCard.ERR_ABRT | StorageCard.ERR_IDNF
+        } else {
+          // Load first sector into buffer
+          const offset = this.sectorIndex() * StorageCard.SECTOR_SIZE
+          this.storage.copy(this.buffer, 0, offset, offset + StorageCard.SECTOR_SIZE)
+          this.status |= StorageCard.STATUS_DRQ
+          this.isTransferring = true
+        }
+        break
+
+      case 0xEF: // Set features
+        // We don't support setting features but accept them without error
+        break
+
+      case 0x30: // Write sector
+      case 0x31:
+        if (!this.sectorValid()) {
+          this.status |= StorageCard.STATUS_ERR
+          this.error |= StorageCard.ERR_ABRT | StorageCard.ERR_IDNF
+        } else {
+          this.status |= StorageCard.STATUS_DRQ
+          this.isTransferring = true
+        }
+        break
+
+      default:
+        // Unsupported command
+        this.status |= StorageCard.STATUS_ERR
+        this.error |= StorageCard.ERR_ABRT
+        break
+    }
+  }
+
+  private readBuffer(): number {
+    if (this.isIdentifying) {
+      const data = this.buffer[this.bufferIndex]
+
+      if (this.bufferIndex < this.commandDataSize - 1) {
+        this.bufferIndex++
+      } else {
+        this.bufferIndex = 0
+        this.isIdentifying = false
+        this.status &= ~StorageCard.STATUS_DRQ
+      }
+
+      return data
+    } else if (this.isTransferring) {
+      const data = this.buffer[this.bufferIndex]
+
+      if (this.bufferIndex < StorageCard.SECTOR_SIZE - 1) {
+        this.bufferIndex++
+      } else {
+        this.bufferIndex = 0
+        this.sectorOffset++
+
+        if (this.sectorOffset < this.sectorCount) {
+          // Load the next sector
+          const offset = (this.sectorIndex() + this.sectorOffset) * StorageCard.SECTOR_SIZE
+          this.storage.copy(this.buffer, 0, offset, offset + StorageCard.SECTOR_SIZE)
+        } else {
+          this.isTransferring = false
+          this.status &= ~StorageCard.STATUS_DRQ
+        }
+      }
+
+      return data
+    } else {
+      return 0x00
+    }
+  }
+
+  private writeBuffer(value: number): void {
+    this.buffer[this.bufferIndex] = value
+
+    if (this.bufferIndex < StorageCard.SECTOR_SIZE - 1) {
+      this.bufferIndex++
+    } else {
+      this.bufferIndex = 0
+
+      // Write the current sector to storage
+      const offset = (this.sectorIndex() + this.sectorOffset) * StorageCard.SECTOR_SIZE
+      this.buffer.copy(this.storage, offset, 0, StorageCard.SECTOR_SIZE)
+
+      this.sectorOffset++
+
+      // Check if all sectors have been written
+      if (this.sectorOffset >= this.sectorCount) {
+        this.isTransferring = false
+        this.status &= ~StorageCard.STATUS_DRQ
+      }
+    }
+  }
+
+  private sectorIndex(): number {
+    return ((this.lba3 & 0x0F) << 24) | (this.lba2 << 16) | (this.lba1 << 8) | this.lba0
+  }
+
+  private sectorValid(): boolean {
+    return this.sectorIndex() < StorageCard.SECTOR_COUNT
+  }
+
+  private generateIdentity(): void {
+    // Generate emulated 128MB CF card identity
+    // Based on real Promaster 128MB CF card data
+
+    // Fill with zeros first
+    this.identity.fill(0x00)
+
+    // Word 0: General configuration
+    this.identity[0] = 0x84
+    this.identity[1] = 0x8A  // Removable Disk
+
+    // Word 1: Number of cylinders
+    this.identity[2] = 0x00
+    this.identity[3] = 0x04
+
+    // Word 2: Reserved
+    this.identity[4] = 0x00
+    this.identity[5] = 0x00
+
+    // Word 3: Number of heads
+    this.identity[6] = 0x08
+    this.identity[7] = 0x00
+
+    // Word 4: Unformatted bytes per track
+    this.identity[8] = 0x00
+    this.identity[9] = 0x40
+
+    // Word 5: Unformatted bytes per sector
+    this.identity[10] = 0x00
+    this.identity[11] = 0x02
+
+    // Word 6: Sectors per track
+    this.identity[12] = 0x20
+    this.identity[13] = 0x00
+
+    // Words 7-9: Reserved
+    this.identity[14] = 0x04
+    this.identity[15] = 0x00
+    this.identity[16] = 0x00
+    this.identity[17] = 0x00
+    this.identity[18] = 0x00
+    this.identity[19] = 0x00
+
+    // Words 10-19: Serial number (20 ASCII characters)
+    const serial = 'ACWD6502EMUCF1010101'
+    for (let i = 0; i < serial.length; i++) {
+      this.identity[20 + i] = serial.charCodeAt(i)
+    }
+
+    // Word 20: Buffer type
+    this.identity[40] = 0x01
+    this.identity[41] = 0x00
+
+    // Word 21: Buffer size in 512 byte increments
+    this.identity[42] = 0x04
+    this.identity[43] = 0x00
+
+    // Word 22: ECC bytes
+    this.identity[44] = 0x04
+    this.identity[45] = 0x00
+
+    // Words 23-26: Firmware revision (8 ASCII characters)
+    const firmware = '1.0     '
+    for (let i = 0; i < firmware.length; i++) {
+      this.identity[46 + i] = firmware.charCodeAt(i)
+    }
+
+    // Words 27-46: Model number (40 ASCII characters)
+    const model = 'ACWD6502EMUCF                       '
+    for (let i = 0; i < model.length; i++) {
+      this.identity[54 + i] = model.charCodeAt(i)
+    }
+
+    // Word 47: Multiple sector setting
+    this.identity[94] = 0x01
+    this.identity[95] = 0x00
+
+    // Word 48: Double word not supported
+    this.identity[96] = 0x00
+    this.identity[97] = 0x00
+
+    // Word 49: Capabilities (LBA supported)
+    this.identity[98] = 0x00
+    this.identity[99] = 0x02
+
+    // Word 50: Reserved
+    this.identity[100] = 0x00
+    this.identity[101] = 0x00
+
+    // Word 51: PIO data transfer cycle timing
+    this.identity[102] = 0x00
+    this.identity[103] = 0x02
+
+    // Word 52: DMA transfer cycle timing
+    this.identity[104] = 0x00
+    this.identity[105] = 0x00
+
+    // Word 53: Field validity
+    this.identity[106] = 0x01
+    this.identity[107] = 0x00
+
+    // Word 54: Current number of cylinders
+    this.identity[108] = 0x00
+    this.identity[109] = 0x04
+
+    // Word 55: Current number of heads
+    this.identity[110] = 0x08
+    this.identity[111] = 0x00
+
+    // Word 56: Current sectors per track
+    this.identity[112] = 0x20
+    this.identity[113] = 0x00
+
+    // Words 57-58: Current capacity in sectors
+    this.identity[114] = 0x00
+    this.identity[115] = 0x00
+    this.identity[116] = 0x04
+    this.identity[117] = 0x00
+
+    // Word 59: Multiple sector setting
+    this.identity[118] = 0x01
+    this.identity[119] = 0x01
+
+    // Words 60-61: Total number of sectors in LBA mode
+    this.identity[120] = 0x00
+    this.identity[121] = 0x00
+    this.identity[122] = 0x04
+    this.identity[123] = 0x00
+
+    // Remaining words are zero
+  }
+
+  /**
+   * Load storage data from a file
+   * If the file doesn't exist, storage remains empty (initialized to 0x00)
+   */
+  async loadFromFile(filePath: string): Promise<void> {
+    try {
+      if (existsSync(filePath)) {
+        const data = await readFile(filePath)
+        // Ensure the file is exactly the expected size
+        if (data.length === StorageCard.STORAGE_SIZE) {
+          data.copy(this.storage, 0, 0, StorageCard.STORAGE_SIZE)
+          console.log(`Storage loaded from: ${filePath}`)
+        } else {
+          console.warn(`Warning: Storage file size mismatch. Expected ${StorageCard.STORAGE_SIZE} bytes, got ${data.length} bytes.`)
+          console.warn('Storage will remain empty.')
+        }
+      } else {
+        console.log(`Storage file not found: ${filePath}`)
+        console.log('A new storage file will be created on exit.')
+      }
+    } catch (error) {
+      console.error('Error loading storage file:', error)
+    }
+  }
+
+  /**
+   * Save storage data to a file
+   */
+  async saveToFile(filePath: string): Promise<void> {
+    try {
+      await writeFile(filePath, this.storage)
+      console.log(`Storage saved to: ${filePath}`)
+    } catch (error) {
+      console.error('Error saving storage file:', error)
+    }
+  }
 
 }

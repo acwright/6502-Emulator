@@ -26,11 +26,14 @@ program
   .option('-d, --databits <databits>', 'Data Bits (5 | 6 | 7 | 8)', '8')
   .option('-t, --stopbits <stopbits>', 'Stop Bits (1 | 1.5 | 2)', '1')
   .option('-p, --port <port>', 'Path to the serial port (e.g., /dev/ttyUSB0)')
+  .option('--storage <path>', 'Path to storage data file for Compact Flash card persistence')
   .addHelpText('beforeAll', figlet.textSync('6502 Emulator', { font: 'cricket' }) + '\n' + `Version: ${VERSION} | A.C. Wright Design\n`)
   .parse(process.argv)
 
 const options = program.opts()
 
+// Main initialization function
+async function main() {
 // Serial port configuration
 const port = options.port
 const baudRate = parseInt(options.baudrate)
@@ -197,16 +200,19 @@ if (port) {
 }
 
 if (options.rom) {
-  machine.loadROM(options.rom)
+  await machine.loadROM(options.rom)
   console.log(`Loaded ROM: ${options.rom}`)
 } else {
   console.log('Loaded ROM: NONE')
 }
 if (options.cart) {
-  machine.loadCart(options.cart)
+  await machine.loadCart(options.cart)
   console.log(`Loaded Cart: ${options.cart}`)
 } else {
   console.log('Loaded Cart: NONE')
+}
+if (options.storage) {
+  await machine.io4.loadFromFile(options.storage)
 }
 if (options.freq) {
   const frequency = Number(options.freq)
@@ -325,7 +331,16 @@ window.on('close', () => {
     'Avg FPS': parseFloat((machine.frames / (uptime / 1000)).toFixed(2))
   })
   
-  process.exit(0)
+  // Save storage data if path was provided
+  if (options.storage) {
+    machine.io4.saveToFile(options.storage).then(() => {
+      process.exit(0)
+    }).catch(() => {
+      process.exit(1)
+    })
+  } else {
+    process.exit(0)
+  }
 })
 
 // Initialize controllers - detect any already connected
@@ -350,3 +365,10 @@ if (devices && devices.length > 0) {
 }
 
 machine.start()
+}
+
+// Run the main function
+main().catch((error) => {
+  console.error('Error:', error)
+  process.exit(1)
+})
