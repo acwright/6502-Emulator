@@ -9,6 +9,9 @@ import { SerialCard } from './IO/SerialCard'
 import { SoundCard } from './IO/SoundCard'
 import { StorageCard } from './IO/StorageCard'
 import { VideoCard } from './IO/VideoCard'
+import { GPIOKeyboardMatrixAttachment } from './IO/GPIOAttachments/GPIOKeyboardMatrixAttachment'
+import { GPIOKeyboardEncoderAttachment } from './IO/GPIOAttachments/GPIOKeyboardEncoderAttachment'
+import { GPIOJoystickAttachment } from './IO/GPIOAttachments/GPIOJoystickAttachment'
 import { readFile } from 'fs/promises'
 
 export class Machine {
@@ -32,6 +35,11 @@ export class Machine {
   io8: VideoCard
 
   cart?: Cart
+
+  // GPIO Attachments
+  keyboardMatrixAttachment: GPIOKeyboardMatrixAttachment
+  keyboardEncoderAttachment: GPIOKeyboardEncoderAttachment
+  joystickAttachment: GPIOJoystickAttachment
 
   isAlive: boolean = false
   isRunning: boolean = false
@@ -77,6 +85,28 @@ export class Machine {
         this.transmit(data)
       }
     }
+
+    // Create GPIO Attachments
+    // Keyboard matrix (manual scanning) - highest priority for Port A rows (priority 10)
+    this.keyboardMatrixAttachment = new GPIOKeyboardMatrixAttachment(10)
+    
+    // Keyboard encoder (ASCII on both Port A and Port B) - medium priority (priority 20)
+    this.keyboardEncoderAttachment = new GPIOKeyboardEncoderAttachment(20)
+    
+    // Joystick (Port B) - lowest priority, fallback (priority 100)
+    this.joystickAttachment = new GPIOJoystickAttachment(false, 100)
+
+    // Attach peripherals to GPIO Card
+    // Keyboard matrix supports both ports
+    this.io6.attachToPortA(this.keyboardMatrixAttachment)
+    this.io6.attachToPortB(this.keyboardMatrixAttachment)
+    
+    // Keyboard encoder supports both ports
+    this.io6.attachToPortA(this.keyboardEncoderAttachment)
+    this.io6.attachToPortB(this.keyboardEncoderAttachment)
+    
+    // Joystick attached to Port B only
+    this.io6.attachToPortB(this.joystickAttachment)
 
     this.cpu.reset()
   }
@@ -170,12 +200,21 @@ export class Machine {
     this.io5.onData(data) // Pass data to Serial card
   }
 
-  onKeyDown(key: string): void {
-    this.io6.onKeyDown(key) // Pass key to GPIO card
+  onKeyDown(scancode: number): void {
+    // Route keyboard input to attachments
+    this.keyboardMatrixAttachment.updateKey(scancode, true)   // Update keyboard matrix
+    this.keyboardEncoderAttachment.updateKey(scancode, true)  // Update keyboard encoder
   }
 
-  onKeyUp(key: string): void {
-    this.io6.onKeyUp(key) // Pass key to GPIO card
+  onKeyUp(scancode: number): void {
+    // Release key from keyboard matrix and encoder
+    this.keyboardMatrixAttachment.updateKey(scancode, false)  // Update keyboard matrix
+    this.keyboardEncoderAttachment.updateKey(scancode, false) // Update keyboard encoder
+  }
+
+  onJoystick(buttons: number): void {
+    // Update joystick attachment with button states
+    this.joystickAttachment.updateJoystick(buttons)
   }
 
   //

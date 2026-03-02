@@ -272,17 +272,30 @@ describe('Machine', () => {
       spy.mockRestore()
     })
 
-    test('onKeyDown() passes key to GPIO card', () => {
-      const spy = jest.spyOn(machine.io6, 'onKeyDown')
-      machine.onKeyDown('ArrowUp')
-      expect(spy).toHaveBeenCalledWith('ArrowUp')
-      spy.mockRestore()
+    test('onKeyDown() routes key to GPIO attachments', () => {
+      const matrixSpy = jest.spyOn(machine.keyboardMatrixAttachment, 'updateKey')
+      const encoderSpy = jest.spyOn(machine.keyboardEncoderAttachment, 'updateKey')
+      machine.onKeyDown(0x52) // Arrow Up USB HID keycode
+      expect(matrixSpy).toHaveBeenCalledWith(0x52, true)
+      expect(encoderSpy).toHaveBeenCalledWith(0x52, true)
+      matrixSpy.mockRestore()
+      encoderSpy.mockRestore()
     })
 
-    test('onKeyUp() passes key to GPIO card', () => {
-      const spy = jest.spyOn(machine.io6, 'onKeyUp')
-      machine.onKeyUp('ArrowUp')
-      expect(spy).toHaveBeenCalledWith('ArrowUp')
+    test('onKeyUp() routes key to GPIO attachments', () => {
+      const matrixSpy = jest.spyOn(machine.keyboardMatrixAttachment, 'updateKey')
+      const encoderSpy = jest.spyOn(machine.keyboardEncoderAttachment, 'updateKey')
+      machine.onKeyUp(0x52) // Arrow Up USB HID keycode
+      expect(matrixSpy).toHaveBeenCalledWith(0x52, false)
+      expect(encoderSpy).toHaveBeenCalledWith(0x52, false)
+      matrixSpy.mockRestore()
+      encoderSpy.mockRestore()
+    })
+
+    test('onJoystick() routes button state to joystick attachment', () => {
+      const spy = jest.spyOn(machine.joystickAttachment, 'updateJoystick')
+      machine.onJoystick(0xFF)
+      expect(spy).toHaveBeenCalledWith(0xFF)
       spy.mockRestore()
     })
   })

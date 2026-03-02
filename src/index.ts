@@ -54,6 +54,117 @@ const machine = new Machine()
 // Serial port instance
 let serialPort: SerialPort | undefined
 
+// Controller state tracking
+const controllers = new Map<number, any>()
+let joystickButtonState: number = 0x00
+
+// Joystick button bit masks (matching GPIOJoystickAttachment)
+const BUTTON_UP = 0x01
+const BUTTON_DOWN = 0x02
+const BUTTON_LEFT = 0x04
+const BUTTON_RIGHT = 0x08
+const BUTTON_A = 0x10
+const BUTTON_B = 0x20
+const BUTTON_SELECT = 0x40
+const BUTTON_START = 0x80
+
+// Axis threshold for converting analog input to digital (50% of normalized range)
+const AXIS_THRESHOLD = 0.5
+
+// Helper function to setup controller event handlers
+function setupControllerHandlers(controller: any, device: any): void {
+  (controller as any).on('buttonDown', (button: string) => {
+    switch (button) {
+      case 'dpadUp':
+        joystickButtonState |= BUTTON_UP
+        break
+      case 'dpadDown':
+        joystickButtonState |= BUTTON_DOWN
+        break
+      case 'dpadLeft':
+        joystickButtonState |= BUTTON_LEFT
+        break
+      case 'dpadRight':
+        joystickButtonState |= BUTTON_RIGHT
+        break
+      case 'a':
+        joystickButtonState |= BUTTON_A
+        break
+      case 'b':
+        joystickButtonState |= BUTTON_B
+        break
+      case 'back':
+        joystickButtonState |= BUTTON_SELECT
+        break
+      case 'start':
+        joystickButtonState |= BUTTON_START
+        break
+    }
+    machine.onJoystick(joystickButtonState)
+  })
+
+  (controller as any).on('buttonUp', (button: string) => {
+    switch (button) {
+      case 'dpadUp':
+        joystickButtonState &= ~BUTTON_UP
+        break
+      case 'dpadDown':
+        joystickButtonState &= ~BUTTON_DOWN
+        break
+      case 'dpadLeft':
+        joystickButtonState &= ~BUTTON_LEFT
+        break
+      case 'dpadRight':
+        joystickButtonState &= ~BUTTON_RIGHT
+        break
+      case 'a':
+        joystickButtonState &= ~BUTTON_A
+        break
+      case 'b':
+        joystickButtonState &= ~BUTTON_B
+        break
+      case 'back':
+        joystickButtonState &= ~BUTTON_SELECT
+        break
+      case 'start':
+        joystickButtonState &= ~BUTTON_START
+        break
+    }
+    machine.onJoystick(joystickButtonState)
+  })
+
+  controller.on('axisMotion', ({ axis, value }: { axis: string; value: number }) => {
+    if (axis === 'leftStickX') {
+      if (value < -AXIS_THRESHOLD) {
+        joystickButtonState |= BUTTON_LEFT
+        joystickButtonState &= ~BUTTON_RIGHT
+      } else if (value > AXIS_THRESHOLD) {
+        joystickButtonState |= BUTTON_RIGHT
+        joystickButtonState &= ~BUTTON_LEFT
+      } else {
+        joystickButtonState &= ~(BUTTON_LEFT | BUTTON_RIGHT)
+      }
+      machine.onJoystick(joystickButtonState)
+    } else if (axis === 'leftStickY') {
+      if (value < -AXIS_THRESHOLD) {
+        joystickButtonState |= BUTTON_UP
+        joystickButtonState &= ~BUTTON_DOWN
+      } else if (value > AXIS_THRESHOLD) {
+        joystickButtonState |= BUTTON_DOWN
+        joystickButtonState &= ~BUTTON_UP
+      } else {
+        joystickButtonState &= ~(BUTTON_UP | BUTTON_DOWN)
+      }
+      machine.onJoystick(joystickButtonState)
+    }
+  })
+
+  controller.on('close', () => {
+    console.log(`Controller closed: ${device.name || device.id}`)
+    controllers.delete(device.id)
+  })
+}
+
 // Setup serial port connection
 if (port) {
   serialPort = new SerialPort({
@@ -135,15 +246,15 @@ const window = sdl.video.createWindow({
 })
 
 window.on('keyDown', (event) => {
-  if (!event.key) { return }
+  if (!event.scancode) { return }
 
-  machine.onKeyDown(event.key)
+  machine.onKeyDown(event.scancode)
 })
 
 window.on('keyUp', (event) => {
-  if (!event.key) { return }
+  if (!event.scancode) { return }
 
-  machine.onKeyUp(event.key)
+  machine.onKeyUp(event.scancode)
 })
 
 machine.render = (buffer: Buffer) => {
@@ -152,7 +263,48 @@ machine.render = (buffer: Buffer) => {
   window.render(WIDTH, HEIGHT, WIDTH * 4, 'rgba32', buffer)
 }
 
+// Controller device add/remove handlers
+(sdl.controller as any).on('deviceAdd', (device: any) => {
+  console.log(`Controller added: ${device.name || device.id}`)
+  
+  try {
+    const controller = sdl.controller.openDevice(device);
+    controllers.set(device.id, controller);
+    
+    setupControllerHandlers(controller, device)
+    
+    console.log(`Controller ${device.name || device.id} opened successfully`)
+  } catch (error) {
+    console.error(`Failed to open controller ${device.name || device.id}:`, error)
+  }
+})
+
+(sdl.controller as any).on('deviceRemove', (device: any) => {
+  console.log(`Controller removed: ${device.name || device.id}`)
+  
+  const controller = controllers.get(device.id);
+  if (controller && !controller.closed) {
+    controller.close();
+  }
+  controllers.delete(device.id);
+  
+  // Clear joystick state when all controllers are removed
+  if (controllers.size === 0) {
+    joystickButtonState = 0x00;
+    machine.onJoystick(joystickButtonState);
+  }
+});
+
 window.on('close', () => {
+  // Close all connected controllers
+  for (const [id, controller] of controllers.entries()) {
+    if (!controller.closed) {
+      console.log(`Closing controller ${id}`)
+      controller.close()
+    }
+  }
+  controllers.clear()
+  
   if (serialPort && serialPort.isOpen) {
     serialPort.close((err) => {
       if (err) {
@@ -173,5 +325,26 @@ window.on('close', () => {
     'Avg FPS': parseFloat((machine.frames / (uptime / 1000)).toFixed(2))
   })
 })
+
+// Initialize controllers - detect any already connected
+console.log('Scanning for controllers...')
+const devices = sdl.controller.devices
+if (devices && devices.length > 0) {
+  console.log(`Found ${devices.length} controller(s)`)
+  devices.forEach((device: any) => {
+    try {
+      const controller = sdl.controller.openDevice(device);
+      controllers.set(device.id, controller);
+      
+      setupControllerHandlers(controller, device)
+      
+      console.log(`Controller ${device.name || device.id} opened successfully`)
+    } catch (error) {
+      console.error(`Failed to open controller ${device.name || device.id}:`, error)
+    }
+  })
+} else {
+  console.log('No controllers found')
+}
 
 machine.start()
