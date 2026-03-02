@@ -277,7 +277,7 @@ machine.render = (buffer: Buffer) => {
   } catch (error) {
     console.error(`Failed to open controller ${device.name || device.id}:`, error)
   }
-})
+});
 
 (sdl.controller as any).on('deviceRemove', (device: any) => {
   console.log(`Controller removed: ${device.name || device.id}`)
@@ -324,6 +324,8 @@ window.on('close', () => {
     'Frames': machine.frames,
     'Avg FPS': parseFloat((machine.frames / (uptime / 1000)).toFixed(2))
   })
+  
+  process.exit(0)
 })
 
 // Initialize controllers - detect any already connected
