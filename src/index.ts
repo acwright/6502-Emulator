@@ -137,39 +137,13 @@ const window = sdl.video.createWindow({
 window.on('keyDown', (event) => {
   if (!event.key) { return }
 
-  switch (event.key) {
-    default:
-      machine.onKeyDown(event.key)
-      break
-  }
+  machine.onKeyDown(event.key)
 })
 
 window.on('keyUp', (event) => {
   if (!event.key) { return }
 
-  switch (event.key) {
-    case 'f1':
-      machine.run()
-      break
-    case 'f2':
-      machine.stop()
-      break
-    case 'f3':
-      machine.step()
-      break
-    case 'f4':
-      machine.tick()
-      break
-    case 'f11':
-      machine.reset(true)  // Reset with cold start (clear RAM)
-      break
-    case 'f12':
-      machine.reset(false) // Reset with warm start (keep RAM)
-      break
-    default:
-      machine.onKeyUp(event.key)
-      break
-  }
+  machine.onKeyUp(event.key)
 })
 
 machine.render = (buffer: Buffer) => {
