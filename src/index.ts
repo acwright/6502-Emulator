@@ -10,6 +10,12 @@ const VERSION = '1.0.0'
 const WIDTH = 320
 const HEIGHT = 240
 
+// Audio constants
+const AUDIO_SAMPLE_RATE = 44100
+const AUDIO_CHANNELS = 1
+const AUDIO_FORMAT = 'f32'
+const AUDIO_BUFFERED = 2048
+
 // Joystick button bit masks (matching GPIOJoystickAttachment)
 const BUTTON_UP = 0x01
 const BUTTON_DOWN = 0x02
@@ -40,6 +46,7 @@ class Emulator {
   private machine: Machine
   private serialPort?: SerialPort
   private window?: any
+  private audioDevice?: any
   private controllers: Map<number, any>
   private joystickButtonState: number
   private options: EmulatorOptions
@@ -57,6 +64,7 @@ class Emulator {
     this.configureFrequency()
     this.configureScale()
     this.setupSerialPort()
+    this.setupAudio()
     this.setupWindow()
     this.setupControllers()
   }
@@ -165,6 +173,40 @@ class Emulator {
           }
         })
       }
+    }
+  }
+
+  private setupAudio(): void {
+    try {
+      this.audioDevice = sdl.audio.openDevice({ type: 'playback' }, {
+        channels: AUDIO_CHANNELS as 1,
+        frequency: AUDIO_SAMPLE_RATE,
+        format: AUDIO_FORMAT as any,
+        buffered: AUDIO_BUFFERED,
+      })
+
+      // Configure SoundCard sample rate to match audio device
+      this.machine.io7.sampleRate = this.audioDevice.frequency
+
+      // Connect the Machine's audio callback to the SDL audio device
+      this.machine.pushAudioSamples = (samples: Float32Array) => {
+        if (!this.audioDevice || this.audioDevice.closed) return
+
+        const { channels, bytesPerSample } = this.audioDevice
+        const buffer = Buffer.alloc(samples.length * channels * bytesPerSample)
+        let offset = 0
+        for (let i = 0; i < samples.length; i++) {
+          for (let ch = 0; ch < channels; ch++) {
+            offset = this.audioDevice.writeSample(buffer, samples[i], offset)
+          }
+        }
+        this.audioDevice.enqueue(buffer)
+      }
+
+      this.audioDevice.play()
+      console.log(`Audio: ${this.audioDevice.frequency} Hz, ${AUDIO_FORMAT}, buffer ${AUDIO_BUFFERED}`)
+    } catch (error) {
+      console.error('Failed to initialize audio:', error)
     }
   }
 
@@ -353,6 +395,12 @@ class Emulator {
     }
     this.controllers.clear()
     
+    // Close the audio device
+    if (this.audioDevice && !this.audioDevice.closed) {
+      this.audioDevice.pause()
+      this.audioDevice.close()
+    }
+
     if (this.serialPort && this.serialPort.isOpen) {
       this.serialPort.close((err) => {
         if (err) {
