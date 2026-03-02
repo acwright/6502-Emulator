@@ -454,7 +454,7 @@ program
   .option('-d, --databits <databits>', 'Data Bits (5 | 6 | 7 | 8)', '8')
   .option('-t, --stopbits <stopbits>', 'Stop Bits (1 | 1.5 | 2)', '1')
   .option('-p, --port <port>', 'Path to the serial port (e.g., /dev/ttyUSB0)')
-  .option('--storage <path>', 'Path to storage data file for Compact Flash card persistence')
+  .option('-S, --storage <path>', 'Path to storage data file for Compact Flash card persistence')
   .addHelpText('beforeAll', figlet.textSync('6502 Emulator', { font: 'cricket' }) + '\n' + `Version: ${VERSION} | A.C. Wright Design\n`)
   .parse(process.argv)
 
