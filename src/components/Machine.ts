@@ -86,6 +86,10 @@ export class Machine {
       }
     }
 
+    // Connect VideoCard IRQ/NMI to CPU
+    this.io8.raiseIRQ = () => this.cpu.irq()
+    this.io8.raiseNMI = () => this.cpu.nmi()
+
     // Create GPIO Attachments
     // Keyboard matrix (manual scanning) - highest priority for Port A rows (priority 10)
     this.keyboardMatrixAttachment = new GPIOKeyboardMatrixAttachment(10)
