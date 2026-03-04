@@ -1,6 +1,6 @@
 # 6502 Emulator
 
-A comprehensive, cycle-accurate emulator for the [A.C. Wright Design 6502](https://github.com/acwright/6502) computer system, built with TypeScript and Node.js.
+A comprehensive, cycle-accurate emulator for the [A.C. Wright 6502](https://github.com/acwright/6502) computer system, built with TypeScript and Node.js.
 
 ## Overview
 
