@@ -292,9 +292,16 @@ describe('Machine', () => {
       encoderSpy.mockRestore()
     })
 
-    test('onJoystick() routes button state to joystick attachment', () => {
-      const spy = jest.spyOn(machine.joystickAttachment, 'updateJoystick')
-      machine.onJoystick(0xFF)
+    test('onJoystickA() routes button state to joystick A attachment', () => {
+      const spy = jest.spyOn(machine.joystickAttachmentA, 'updateJoystick')
+      machine.onJoystickA(0xFF)
+      expect(spy).toHaveBeenCalledWith(0xFF)
+      spy.mockRestore()
+    })
+
+    test('onJoystickB() routes button state to joystick B attachment', () => {
+      const spy = jest.spyOn(machine.joystickAttachmentB, 'updateJoystick')
+      machine.onJoystickB(0xFF)
       expect(spy).toHaveBeenCalledWith(0xFF)
       spy.mockRestore()
     })

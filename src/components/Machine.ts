@@ -222,12 +222,11 @@ export class Machine {
     this.keyboardEncoderAttachment.updateKey(scancode, false) // Update keyboard encoder
   }
 
-  onJoystick(buttons: number): void {
-    // Update joystick attachments with button states
-    // For now we are just supporting one emulator attached joystick 
-    // and sending data to both Joystick ports
-    // TODO: Support multiple joysticks
+  onJoystickA(buttons: number): void {
     this.joystickAttachmentA.updateJoystick(buttons)
+  }
+
+  onJoystickB(buttons: number): void {
     this.joystickAttachmentB.updateJoystick(buttons)
   }
 

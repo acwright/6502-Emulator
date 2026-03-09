@@ -48,14 +48,16 @@ class Emulator {
   private window?: any
   private audioDevice?: any
   private controllers: Map<number, any>
-  private joystickButtonState: number
+  private joystickButtonStateA: number
+  private joystickButtonStateB: number
   private options: EmulatorOptions
 
   constructor(options: EmulatorOptions) {
     this.options = options
     this.machine = new Machine()
     this.controllers = new Map()
-    this.joystickButtonState = 0x00
+    this.joystickButtonStateA = 0x00
+    this.joystickButtonStateB = 0x00
   }
 
   async initialize(): Promise<void> {
@@ -237,6 +239,11 @@ class Emulator {
     this.window.on('close', () => this.shutdown())
   }
 
+  private playerForController(deviceId: number): 'A' | 'B' {
+    const ids = Array.from(this.controllers.keys())
+    return ids.indexOf(deviceId) === 0 ? 'B' : 'A'
+  }
+
   private setupControllers(): void {
     // Controller device add/remove handlers
     (sdl.controller as any).on('deviceAdd', (device: any) => {
@@ -246,9 +253,10 @@ class Emulator {
         const controller = sdl.controller.openDevice(device)
         this.controllers.set(device.id, controller)
         
-        this.setupControllerHandlers(controller, device)
+        const player = this.playerForController(device.id)
+        this.setupControllerHandlers(controller, device, player)
         
-        console.log(`Controller ${device.name || device.id} opened successfully`)
+        console.log(`Controller ${device.name || device.id} opened as Player ${player}`)
       } catch (error) {
         console.error(`Failed to open controller ${device.name || device.id}:`, error)
       }
@@ -257,16 +265,20 @@ class Emulator {
     ;(sdl.controller as any).on('deviceRemove', (device: any) => {
       console.log(`Controller removed: ${device.name || device.id}`)
       
+      const player = this.playerForController(device.id)
       const controller = this.controllers.get(device.id)
       if (controller && !controller.closed) {
         controller.close()
       }
       this.controllers.delete(device.id)
       
-      // Clear joystick state when all controllers are removed
-      if (this.controllers.size === 0) {
-        this.joystickButtonState = 0x00
-        this.machine.onJoystick(this.joystickButtonState)
+      // Clear joystick state for the removed controller's player
+      if (player === 'A') {
+        this.joystickButtonStateA = 0x00
+        this.machine.onJoystickA(this.joystickButtonStateA)
+      } else {
+        this.joystickButtonStateB = 0x00
+        this.machine.onJoystickB(this.joystickButtonStateB)
       }
     })
 
@@ -280,9 +292,10 @@ class Emulator {
           const controller = sdl.controller.openDevice(device)
           this.controllers.set(device.id, controller)
           
-          this.setupControllerHandlers(controller, device)
+          const player = this.playerForController(device.id)
+          this.setupControllerHandlers(controller, device, player)
           
-          console.log(`Controller ${device.name || device.id} opened successfully`)
+          console.log(`Controller ${device.name || device.id} opened as Player ${player}`)
         } catch (error) {
           console.error(`Failed to open controller ${device.name || device.id}:`, error)
         }
@@ -292,90 +305,75 @@ class Emulator {
     }
   }
 
-  private setupControllerHandlers(controller: any, device: any): void {
-    (controller as any).on('buttonDown', (button: string) => {
+  private setupControllerHandlers(controller: any, device: any, player: 'A' | 'B'): void {
+    const getState = () => player === 'A' ? this.joystickButtonStateA : this.joystickButtonStateB
+    const setState = (v: number) => {
+      if (player === 'A') this.joystickButtonStateA = v
+      else this.joystickButtonStateB = v
+    }
+    const send = () => {
+      if (player === 'A') this.machine.onJoystickA(this.joystickButtonStateA)
+      else this.machine.onJoystickB(this.joystickButtonStateB)
+    }
+
+    ;(controller as any).on('buttonDown', (button: string) => {
+      let state = getState()
       switch (button) {
-        case 'dpadUp':
-          this.joystickButtonState |= BUTTON_UP
-          break
-        case 'dpadDown':
-          this.joystickButtonState |= BUTTON_DOWN
-          break
-        case 'dpadLeft':
-          this.joystickButtonState |= BUTTON_LEFT
-          break
-        case 'dpadRight':
-          this.joystickButtonState |= BUTTON_RIGHT
-          break
-        case 'a':
-          this.joystickButtonState |= BUTTON_A
-          break
-        case 'b':
-          this.joystickButtonState |= BUTTON_B
-          break
-        case 'back':
-          this.joystickButtonState |= BUTTON_SELECT
-          break
-        case 'start':
-          this.joystickButtonState |= BUTTON_START
-          break
+        case 'dpadUp':    state |= BUTTON_UP; break
+        case 'dpadDown':  state |= BUTTON_DOWN; break
+        case 'dpadLeft':  state |= BUTTON_LEFT; break
+        case 'dpadRight': state |= BUTTON_RIGHT; break
+        case 'a':         state |= BUTTON_A; break
+        case 'b':         state |= BUTTON_B; break
+        case 'back':      state |= BUTTON_SELECT; break
+        case 'start':     state |= BUTTON_START; break
       }
-      this.machine.onJoystick(this.joystickButtonState)
+      setState(state)
+      send()
     })
 
     ;(controller as any).on('buttonUp', (button: string) => {
+      let state = getState()
       switch (button) {
-        case 'dpadUp':
-          this.joystickButtonState &= ~BUTTON_UP
-          break
-        case 'dpadDown':
-          this.joystickButtonState &= ~BUTTON_DOWN
-          break
-        case 'dpadLeft':
-          this.joystickButtonState &= ~BUTTON_LEFT
-          break
-        case 'dpadRight':
-          this.joystickButtonState &= ~BUTTON_RIGHT
-          break
-        case 'a':
-          this.joystickButtonState &= ~BUTTON_A
-          break
-        case 'b':
-          this.joystickButtonState &= ~BUTTON_B
-          break
-        case 'back':
-          this.joystickButtonState &= ~BUTTON_SELECT
-          break
-        case 'start':
-          this.joystickButtonState &= ~BUTTON_START
-          break
+        case 'dpadUp':    state &= ~BUTTON_UP; break
+        case 'dpadDown':  state &= ~BUTTON_DOWN; break
+        case 'dpadLeft':  state &= ~BUTTON_LEFT; break
+        case 'dpadRight': state &= ~BUTTON_RIGHT; break
+        case 'a':         state &= ~BUTTON_A; break
+        case 'b':         state &= ~BUTTON_B; break
+        case 'back':      state &= ~BUTTON_SELECT; break
+        case 'start':     state &= ~BUTTON_START; break
       }
-      this.machine.onJoystick(this.joystickButtonState)
+      setState(state)
+      send()
     })
 
     controller.on('axisMotion', ({ axis, value }: { axis: string; value: number }) => {
+      let state = getState()
       if (axis === 'leftStickX') {
         if (value < -AXIS_THRESHOLD) {
-          this.joystickButtonState |= BUTTON_LEFT
-          this.joystickButtonState &= ~BUTTON_RIGHT
+          state |= BUTTON_LEFT
+          state &= ~BUTTON_RIGHT
         } else if (value > AXIS_THRESHOLD) {
-          this.joystickButtonState |= BUTTON_RIGHT
-          this.joystickButtonState &= ~BUTTON_LEFT
+          state |= BUTTON_RIGHT
+          state &= ~BUTTON_LEFT
         } else {
-          this.joystickButtonState &= ~(BUTTON_LEFT | BUTTON_RIGHT)
+          state &= ~(BUTTON_LEFT | BUTTON_RIGHT)
         }
-        this.machine.onJoystick(this.joystickButtonState)
+        setState(state)
+        send()
       } else if (axis === 'leftStickY') {
         if (value < -AXIS_THRESHOLD) {
-          this.joystickButtonState |= BUTTON_UP
-          this.joystickButtonState &= ~BUTTON_DOWN
+          state |= BUTTON_UP
+          state &= ~BUTTON_DOWN
         } else if (value > AXIS_THRESHOLD) {
-          this.joystickButtonState |= BUTTON_DOWN
-          this.joystickButtonState &= ~BUTTON_UP
+          state |= BUTTON_DOWN
+          state &= ~BUTTON_UP
         } else {
-          this.joystickButtonState &= ~(BUTTON_UP | BUTTON_DOWN)
+          state &= ~(BUTTON_UP | BUTTON_DOWN)
         }
-        this.machine.onJoystick(this.joystickButtonState)
+        setState(state)
+        send()
       }
     })
 
