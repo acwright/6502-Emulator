@@ -34,3 +34,6 @@ logs/
 
 # Optional: misc
 *.tgz
+
+# Example files
+examples

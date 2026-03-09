@@ -413,13 +413,16 @@ export class GPIOLCDAttachment extends GPIOAttachmentBase {
     const currentE = !!(maskedValue & PIN_E)
     const prevE = this.lastE
 
-    this.lastPortA = maskedValue
-    this.lastE = currentE
-
-    // Latch on falling edge of E
+    // Latch on falling edge of E — use the PREVIOUS lastPortA so that
+    // RS/RW reflect the state while E was still HIGH (HD44780 setup-time
+    // requirement).  If the CPU drops RS and E in the same VIA write,
+    // this preserves the RS value that was active during the E=1 phase.
     if (prevE && !currentE) {
       this.latchBus()
     }
+
+    this.lastPortA = maskedValue
+    this.lastE = currentE
   }
 
   readPortA(ddr: number, or: number): number {
