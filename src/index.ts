@@ -9,7 +9,7 @@ import { StorageCard } from './components/IO/StorageCard'
 import { SoundCard } from './components/IO/SoundCard'
 import sdl from '@kmamal/sdl'
 
-const VERSION = '1.0.0'
+const VERSION = '1.1.0'
 const WIDTH = 320
 const HEIGHT = 240
 

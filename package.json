@@ -1,6 +1,6 @@
 {
   "name": "ac6502",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Emulator for the A.C. Wright 6502 project",
   "main": "index.js",
   "bin": {
