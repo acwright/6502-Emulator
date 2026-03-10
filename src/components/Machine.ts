@@ -319,7 +319,14 @@ export class Machine {
       (this as any)._accumulatorMs = accumulator
     }
 
-    if (this.render) {
+    if (this.render && !this.kim) {
+      const videoCard = this.io8 as VideoCard
+      if (videoCard.frameReady) {
+        videoCard.frameReady = false
+        this.render()
+        this.frames += 1
+      }
+    } else if (this.render && this.kim) {
       this.render()
       this.frames += 1
     }

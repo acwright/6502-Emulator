@@ -173,8 +173,14 @@ export class VideoCard implements IO {
   /** Temporary scanline pixel buffer (color palette indices) */
   private scanlinePixels = new Uint8Array(TMS_PIXELS_X)
 
-  /** 320 × 240 RGBA output buffer for SDL rendering */
+  /** 320 × 240 RGBA output buffer for SDL rendering (front buffer – always a complete frame) */
   buffer: Buffer = Buffer.alloc(DISPLAY_WIDTH * DISPLAY_HEIGHT * 4)
+
+  /** Back buffer where scanlines are rendered progressively */
+  private backBuffer: Buffer = Buffer.alloc(DISPLAY_WIDTH * DISPLAY_HEIGHT * 4)
+
+  /** True when a complete frame has been copied to the front buffer */
+  frameReady: boolean = false
 
   /** Cycle accumulator for scanline timing */
   private cycleAccumulator: number = 0
@@ -390,6 +396,9 @@ export class VideoCard implements IO {
 
     this.currentScanline++
     if (this.currentScanline >= TOTAL_SCANLINES) {
+      // Frame complete – copy back buffer to front buffer
+      this.backBuffer.copy(this.buffer)
+      this.frameReady = true
       this.currentScanline = 0
     }
   }
@@ -659,19 +668,19 @@ export class VideoCard implements IO {
   //  Buffer Management
   // ================================================================
 
-  /** Fill entire output buffer with the current backdrop color */
+  /** Fill entire back buffer with the current backdrop color */
   private fillBackground(): void {
     const bgIdx = this.mainBgColor()
     const [r, g, b, a] = TMS_PALETTE[bgIdx]
-    for (let i = 0; i < this.buffer.length; i += 4) {
-      this.buffer[i] = r
-      this.buffer[i + 1] = g
-      this.buffer[i + 2] = b
-      this.buffer[i + 3] = a
+    for (let i = 0; i < this.backBuffer.length; i += 4) {
+      this.backBuffer[i] = r
+      this.backBuffer[i + 1] = g
+      this.backBuffer[i + 2] = b
+      this.backBuffer[i + 3] = a
     }
   }
 
-  /** Write a rendered scanline into the output buffer at the correct position */
+  /** Write a rendered scanline into the back buffer at the correct position */
   private writeScanlineToBuffer(y: number, pixels: Uint8Array): void {
     const bufferY = y + BORDER_Y
     if (bufferY < 0 || bufferY >= DISPLAY_HEIGHT) return
@@ -680,10 +689,10 @@ export class VideoCard implements IO {
     for (let x = 0; x < TMS_PIXELS_X; x++) {
       const offset = rowOffset + (BORDER_X + x) * 4
       const [r, g, b, a] = TMS_PALETTE[pixels[x] & 0x0F]
-      this.buffer[offset] = r
-      this.buffer[offset + 1] = g
-      this.buffer[offset + 2] = b
-      this.buffer[offset + 3] = a
+      this.backBuffer[offset] = r
+      this.backBuffer[offset + 1] = g
+      this.backBuffer[offset + 2] = b
+      this.backBuffer[offset + 3] = a
     }
   }
 

@@ -537,7 +537,7 @@ program
   .version(VERSION, '-v, --version', 'Output the current emulator version')
   .helpOption('-h, --help', 'Output help / options')
   .option('-c, --cart <path>', 'Path to 32K Cart binary file')
-  .option('-f, --freq <freq>', 'Set the clock frequency in Hz', '2000000')
+  .option('-f, --freq <freq>', 'Set the clock frequency in Hz', '1000000')
   .option('-r, --rom <path>', 'Path to 32K ROM binary file')
   .option('-s, --scale <scale>', 'Set the emulator scale', '2')
   .option('-b, --baudrate <baudrate>', 'Baud Rate', '9600')

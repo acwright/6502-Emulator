@@ -248,6 +248,9 @@ export class SoundCard implements IO {
   }
 
   tick(frequency: number): void {
+    // SID clock runs at the CPU clock rate
+    this.sidClock = frequency
+
     // Each tick represents CYCLES_PER_TICK SID clock cycles
     const cycles = CYCLES_PER_TICK
 
