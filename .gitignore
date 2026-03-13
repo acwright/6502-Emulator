@@ -34,9 +34,3 @@ logs/
 
 # Optional: misc
 *.tgz
-
-# Example files
-examples
-
-# TODO
-TODO.md
