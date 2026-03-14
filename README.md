@@ -4,7 +4,7 @@ A comprehensive, cycle-accurate emulator for the [A.C. Wright 6502](https://gith
 
 ## Overview
 
-This emulator provides a complete software implementation of a 65C02-based computer system, designed to run the same code as the hardware implementation. It features full I/O peripheral support, including video, sound, serial communication, storage, and GPIO interfaces.
+This emulator provides a complete software implementation of a 65C02-based computer system, designed to run the same code as the hardware implementation. It features full I/O peripheral support, including video, sound, serial communication, storage, and GPIO interfaces. The emulator supports four different system configurations (targets) to accommodate various use cases from full-featured systems to minimal development boards.
 
 ## Features
 
@@ -26,22 +26,24 @@ This emulator provides a complete software implementation of a 65C02-based compu
   - Real-time rendering via SDL
   
 - **Audio Output**
-  - MOS 6518 SID Sound card emulation with sample generation
+  - MOS 6581 SID Sound card emulation with sample generation
   - 44.1 kHz audio output
   - SDL audio integration
   
 - **I/O Peripherals**
-  - **Serial Card**: 6551 UART communication with configurable baud rate, parity, data/stop bits
+  - **Serial Card (ACIA)**: 6551 UART communication with configurable baud rate, parity, data/stop bits
   - **Storage Card**: Compact Flash 8-bit IDE mode persistent storage emulation
   - **RTC Card**: DS1511Y real-time clock emulation with IRQ/NMI support
-  - **GPIO Card**: 65C22 VIA (Versatile Interface Adapter) emulation
+  - **GPIO Card (VIA)**: 65C22 VIA (Versatile Interface Adapter) emulation
     - Two 8-bit bidirectional I/O ports
     - Two 16-bit timers with interrupts
     - Shift register for serial I/O
+  - **Terminal Card**: VTAC fantasy terminal emulation for text-based development
   
 - **Input Devices**
   - Keyboard support (matrix and encoder modes)
-  - Joystick/gamepad support with button mapping
+  - Joystick/gamepad support with button mapping (dual controller support)
+  - Keypad support (KIM mode)
   - SDL input handling
   
 - **Development Features**
@@ -58,11 +60,16 @@ Get up and running in seconds:
 # Install globally
 npm install -g ac6502
 
-# Run the emulator
+# Run the emulator (default COB target)
 ac6502
 
 # Load a ROM
 ac6502 --rom /path/to/rom.bin
+
+# Run in different system configurations
+ac6502 --target kim --rom /path/to/kim.bin
+ac6502 --target dev --cart /path/to/program.bin
+ac6502 --target vcs --cart /path/to/game.bin
 ```
 
 ## Installation
@@ -88,7 +95,7 @@ npm install -g ac6502
 npm install
 ```
 
-### Build
+#### Build
 
 ```bash
 npm run build
@@ -112,14 +119,17 @@ ac6502 [options]
 
 - `-c, --cart <path>` - Load a cartridge ROM file
 - `-r, --rom <path>` - Load a system ROM file
-- `-f, --freq <frequency>` - Set CPU frequency in Hz (default: 2000000)
-- `-s, --scale <factor>` - Set display scale factor (default: 2)
+- `-f, --freq <frequency>` - Set CPU frequency in Hz (default: 1000000)
+- `-s, --scale <factor>` - Set display scale factor (default: 1)
+- `-T, --target <target>` - System target: cob, vcs, kim, dev (default: cob)
 - `-p, --port <device>` - Serial port device path
 - `-b, --baudrate <rate>` - Serial baud rate (default: 9600)
 - `-a, --parity <type>` - Serial parity: none, even, odd (default: none)
 - `-d, --databits <bits>` - Serial data bits: 5, 6, 7, 8 (default: 8)
 - `-t, --stopbits <bits>` - Serial stop bits: 1, 1.5, 2 (default: 1)
 - `-S, --storage <path>` - Set storage file path for Compact Flash card persistence
+- `-v, --version` - Output the current emulator version
+- `-h, --help` - Output help / options
 
 ### Examples
 
@@ -135,12 +145,36 @@ Connect to serial hardware:
 ac6502 --port /dev/ttyUSB0 --baudrate 9600 --rom /path/to/monitor.bin
 ```
 
+Run in KIM mode with LCD and keypad:
+
+```bash
+ac6502 --target kim --rom /path/to/kim.bin --scale 2
+```
+
+Run in development mode with terminal:
+
+```bash
+ac6502 --target dev --cart /path/to/program.bin
+```
+
+Set custom CPU frequency and storage:
+
+```bash
+ac6502 --freq 2000000 --storage ./disk.img --cart /path/to/program.bin
+```
+
 ## Architecture
 
-### Component Structure
+### System Targets
+
+The emulator supports four different system configurations via the `--target` option:
+
+#### COB (Complete On-Board) - Default
+
+Full-featured system with all peripherals:
 
 ```
-Machine
+Machine (COB)
 ├── CPU (65C02)
 ├── RAM (System Memory)
 ├── ROM (System BIOS/Monitor)
@@ -148,21 +182,79 @@ Machine
 └── I/O Cards (8 slots)
     ├── IO1: RAM Card (Expansion)
     ├── IO2: RAM Card (Expansion)
-    ├── IO3: RTC Card (Real-Time Clock)
+    ├── IO3: RTC Card (DS1511Y Real-Time Clock)
     ├── IO4: Storage Card (Compact Flash 8-bit IDE Mode)
-    ├── IO5: Serial Card (6551 UART)
-    ├── IO6: GPIO Card (65C22 VIA)
+    ├── IO5: Serial Card (6551 ACIA)
+    ├── IO6: VIA Card (65C22 GPIO)
     ├── IO7: Sound Card (6581 SID)
     └── IO8: Video Card (TMS9918)
 ```
 
-### GPIO Attachments
+#### VCS (Video Computer System)
 
-The GPIO card supports multiple attachment types:
+Minimal system focused on video and sound:
 
+```
+Machine (VCS)
+├── CPU (65C02)
+├── RAM (System Memory)
+├── ROM (System BIOS/Monitor)
+├── Cart (Optional Cartridge)
+└── I/O Cards (8 slots)
+    ├── IO6: VIA Card (65C22 GPIO)
+    ├── IO7: Sound Card (6581 SID)
+    └── IO8: Video Card (TMS9918)
+```
+
+#### KIM (Keyboard Input Monitor)
+
+Single-board computer with LCD and keypad:
+
+```
+Machine (KIM)
+├── CPU (65C02)
+├── RAM (System Memory)
+├── ROM (System BIOS/Monitor)
+├── Cart (Optional Cartridge)
+└── I/O Cards (8 slots)
+    ├── IO5: Serial Card (6551 ACIA)
+    └── IO8: VIA Card (65C22 GPIO)
+            ├── LCD Attachment (HD44780 16×2 character display)
+            └── Keypad Attachment (4×6 matrix keypad)
+```
+
+#### DEV (Development)
+
+System for software development with terminal interface:
+
+```
+Machine (DEV)
+├── CPU (65C02)
+├── RAM (System Memory)
+├── ROM (System BIOS/Monitor)
+├── Cart (Optional Cartridge)
+└── I/O Cards (8 slots)
+    ├── IO1: RAM Card (Expansion)
+    ├── IO2: RAM Card (Expansion)
+    ├── IO3: RTC Card (DS1511Y Real-Time Clock)
+    ├── IO4: Storage Card (Compact Flash 8-bit IDE Mode)
+    ├── IO5: Serial Card (6551 ACIA)
+    ├── IO6: VIA Card (65C22 GPIO)
+    └── IO8: Terminal Card (VTAC)
+```
+
+### VIA (GPIO) Attachments
+
+The VIA card supports multiple attachment types depending on the target:
+
+#### Standard Attachments (COB/DEV/VCS)
 - **Keyboard Matrix**: PS/2-style keyboard matrix scanning
 - **Keyboard Encoder**: Parallel keyboard encoder
-- **Joystick**: Game controller with 8 buttons and directional input
+- **Joystick A/B**: Game controllers with 8 buttons and directional input
+
+#### KIM Attachments
+- **LCD Display**: HD44780-compatible 16×2 character LCD with 5×8 pixel characters
+- **Keypad**: 4×6 matrix keypad with 24-key layout
 
 ### Memory Map
 
@@ -175,26 +267,31 @@ The system uses a standard 6502 memory layout with I/O cards mapped into the add
 ```
 src/
 ├── index.ts                 # Main entry point and emulator loop
+├── lib.ts                   # Library exports
 ├── components/
 │   ├── CPU.ts              # 65C02 CPU implementation
-│   ├── Machine.ts          # System integration
+│   ├── Machine.ts          # System integration and target configuration
 │   ├── RAM.ts              # RAM module
 │   ├── ROM.ts              # ROM module
 │   ├── Cart.ts             # Cartridge support
 │   ├── IO.ts               # I/O interface
 │   └── IO/                 # I/O peripheral implementations
-│       ├── VIA.ts
-│       ├── RAMBank.ts
-│       ├── RTC.ts
-│       ├── ACIA.ts
-│       ├── Sound.ts
-│       ├── Storage.ts
-│       ├── Video.ts
+│       ├── ACIA.ts         # 6551 Serial card
+│       ├── VIA.ts          # 65C22 GPIO card
+│       ├── RAMBank.ts      # RAM expansion card
+│       ├── RTC.ts          # Real-time clock card
+│       ├── Sound.ts        # 6581 SID sound card
+│       ├── Storage.ts      # Compact Flash storage card
+│       ├── Video.ts        # TMS9918 video card
+│       ├── Terminal.ts     # VTAC terminal card
+│       ├── Empty.ts        # Empty slot placeholder
 │       └── Attachments/
 │           ├── Attachment.ts
 │           ├── JoystickAttachment.ts
 │           ├── KeyboardEncoderAttachment.ts
-│           └── KeyboardMatrixAttachment.ts
+│           ├── KeyboardMatrixAttachment.ts
+│           ├── KeypadAttachment.ts
+│           └── LCDAttachment.ts
 └── tests/                  # Comprehensive test suite
 ```
 
@@ -220,7 +317,7 @@ npm run test:coverage
 
 ### Release Build
 
-```
+```bash
 git tag vX.Y.Z
 git push origin main --tags
 npm publish
@@ -234,15 +331,25 @@ npm publish
 - **Graphics**: SDL via @kmamal/sdl
 - **Serial**: SerialPort library
 - **CLI**: Commander.js
+- **Terminal**: VTAC Terminal library
 
 ## Performance
 
-The emulator targets 2 MHz operation by default (configurable) and attempts to maintain accurate timing by synchronizing with real-time clock cycles. The frame rate is capped at 60 FPS for video output.
+The emulator targets 1 MHz operation by default (configurable) and attempts to maintain accurate timing by synchronizing with real-time clock cycles. The frame rate is capped at 60 FPS for video output.
+
+## Supported Input Devices
+
+- **Keyboard**: Full keyboard support via SDL for all targets
+- **Game Controllers**: Dual controller support (Player A and Player B) for VCS and COB targets
+  - D-pad and analog stick support
+  - 8 buttons: Up, Down, Left, Right, A, B, Select, Start
+- **Keypad**: 4×6 matrix keypad for KIM target (24 keys including arrows, numbers, and function keys)
 
 ## Credits
 
 - CPU implementation adapted from [OneLoneCoder's olcNES](https://github.com/OneLoneCoder/olcNES)
 - TMS9918 implementation based on [vrEmuTms9918](https://github.com/visrealm/vrEmuTms9918) by Troy Schrapel
+- LCD implementation based on [vrEmuLcd](https://github.com/visrealm/vrEmuLcd) by Troy Schrapel
 
 ## License
 

@@ -12,7 +12,7 @@ import sdl from '@kmamal/sdl'
 import { readFile, writeFile } from 'fs/promises'
 import { existsSync } from 'fs'
 
-const VERSION = '1.4.0'
+const VERSION = '1.4.1'
 const WIDTH = 320
 const HEIGHT = 240
 
