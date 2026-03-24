@@ -84,6 +84,12 @@ const USB_HID_TO_ASCII: { [key: number]: number } = {
  * - Shift: Uppercase letters and shifted symbols
  */
 export class KeyboardEncoderAttachment extends AttachmentBase {
+  // Selects which port(s) receive data and fire interrupts:
+  // 'A' = PS/2 encoder on Port A (CA1 IRQ only)
+  // 'B' = Matrix encoder on Port B (CB1 IRQ only)
+  // 'both' = both ports active (default)
+  activePort: 'A' | 'B' | 'both' = 'both'
+
   // Port A state
   private asciiDataA: number = 0x00
   private dataReadyA: boolean = false
@@ -444,18 +450,20 @@ export class KeyboardEncoderAttachment extends AttachmentBase {
       return
     }
 
-    // Update both ports with the mapped data
-    this.asciiDataA = mappedValue
-    this.asciiDataB = mappedValue
-    this.dataReadyA = true
-    this.dataReadyB = true
-
-    // Trigger interrupts on both ports if enabled
-    if (this.enabledA) {
-      this.interruptPendingA = true
+    // Update active port(s) with the mapped data
+    if (this.activePort !== 'B') {
+      this.asciiDataA = mappedValue
+      this.dataReadyA = true
+      if (this.enabledA) {
+        this.interruptPendingA = true
+      }
     }
-    if (this.enabledB) {
-      this.interruptPendingB = true
+    if (this.activePort !== 'A') {
+      this.asciiDataB = mappedValue
+      this.dataReadyB = true
+      if (this.enabledB) {
+        this.interruptPendingB = true
+      }
     }
   }
 

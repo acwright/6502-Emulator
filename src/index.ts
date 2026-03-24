@@ -12,7 +12,7 @@ import sdl from '@kmamal/sdl'
 import { readFile, writeFile } from 'fs/promises'
 import { existsSync } from 'fs'
 
-const VERSION = '1.6.0'
+const VERSION = '1.7.0'
 const WIDTH = 320
 const HEIGHT = 240
 
@@ -47,6 +47,7 @@ interface EmulatorOptions {
   port?: string
   storage?: string
   target?: string
+  encoder?: string
 }
 
 class Emulator {
@@ -72,6 +73,7 @@ class Emulator {
     await this.loadBinaries()
     this.configureFrequency()
     this.configureScale()
+    this.configureEncoder()
     await this.setupSerialPort()
     this.setupAudio()
     this.setupWindow()
@@ -119,6 +121,15 @@ class Emulator {
         console.log('A new storage file will be created on exit.')
         ;(this.machine.io4 as Storage).loadData(null)
       }
+    }
+  }
+
+  private configureEncoder(): void {
+    const enc = this.options.encoder ?? 'matrix'
+    const activePort = enc === 'ps2' ? 'A' : enc === 'matrix' ? 'B' : 'both'
+    if (this.machine.keyboardEncoderAttachment) {
+      this.machine.keyboardEncoderAttachment.activePort = activePort as 'A' | 'B' | 'both'
+      console.log(`Keyboard encoder: ${enc} (Port ${activePort})`)
     }
   }
 
@@ -598,17 +609,18 @@ program
   .description('Emulator for the A.C. Wright 6502 project.')
   .version(VERSION, '-v, --version', 'Output the current emulator version')
   .helpOption('-h, --help', 'Output help / options')
-  .option('-a, --parity <parity>', 'Parity (odd | even | none)', 'none')
-  .option('-b, --baudrate <baudrate>', 'Baud Rate', '9600')
-  .option('-c, --cart <path>', 'Path to 32K Cart binary file')
-  .option('-d, --databits <databits>', 'Data Bits (5 | 6 | 7 | 8)', '8')
-  .option('-f, --freq <freq>', 'Set the clock frequency in Hz', '1000000')
-  .option('-p, --port <port>', 'Path to the serial port (e.g., /dev/ttyUSB0)')
-  .option('-r, --rom <path>', 'Path to 32K ROM binary file')
-  .option('-s, --scale <scale>', 'Set the emulator scale', '2')
-  .option('-S, --storage <path>', 'Path to storage data file for Compact Flash card persistence')
-  .option('-t, --stopbits <stopbits>', 'Stop Bits (1 | 1.5 | 2)', '1')
+  .addOption(new Option('-a, --parity <parity>', 'Parity (odd | even | none)').default('none'))
+  .addOption(new Option('-b, --baudrate <baudrate>', 'Baud Rate').default('9600'))
+  .addOption(new Option('-c, --cart <path>', 'Path to 32K Cart binary file'))
+  .addOption(new Option('-d, --databits <databits>', 'Data Bits (5 | 6 | 7 | 8)').default('8'))
+  .addOption(new Option('-f, --freq <freq>', 'Set the clock frequency in Hz').default('1000000'))
+  .addOption(new Option('-p, --port <port>', 'Path to the serial port (e.g., /dev/ttyUSB0)'))
+  .addOption(new Option('-r, --rom <path>', 'Path to 32K ROM binary file'))
+  .addOption(new Option('-s, --scale <scale>', 'Set the emulator scale').default('2'))
+  .addOption(new Option('-S, --storage <path>', 'Path to storage data file for Compact Flash card persistence'))
+  .addOption(new Option('-t, --stopbits <stopbits>', 'Stop Bits (1 | 1.5 | 2)').default('1'))
   .addOption(new Option('-T, --target <target>', 'System target').choices(['cob', 'vcs', 'kim', 'dev']).default('cob'))
+  .addOption(new Option('-e, --encoder <mode>', 'Keyboard encoder active port (ps2 = Port A / CA1, matrix = Port B / CB1)').choices(['ps2', 'matrix', 'both']).default('matrix'))
   .addHelpText('beforeAll', figlet.textSync('6502 Emulator', { font: 'cricket' }) + '\n' + `Version: ${VERSION} | A.C. Wright Design\n`)
   .parse(process.argv)
 
