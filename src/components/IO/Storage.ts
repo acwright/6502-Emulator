@@ -450,10 +450,13 @@ export class Storage implements IO {
       uint8Data = new Uint8Array(data)
     }
 
-    // Ensure the data is exactly the expected size
+    // Ensure the data is exactly the expected size, or empty (new file)
     if (uint8Data.length === Storage.STORAGE_SIZE) {
       this.storage.set(uint8Data)
       console.log(`Storage loaded (${Storage.STORAGE_SIZE} bytes)`)
+    } else if (uint8Data.length === 0) {
+      this.storage.fill(0x00)
+      console.log('Storage initialized as new empty image.')
     } else {
       console.warn(`Warning: Storage data size mismatch. Expected ${Storage.STORAGE_SIZE} bytes, got ${uint8Data.length} bytes.`)
       console.warn('Storage will remain empty.')

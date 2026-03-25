@@ -118,8 +118,10 @@ class Emulator {
         ;(this.machine.io4 as Storage).loadData(new Uint8Array(storageData))
       } else {
         console.log(`Storage file not found: ${this.options.storage}`)
-        console.log('A new storage file will be created on exit.')
-        ;(this.machine.io4 as Storage).loadData(null)
+        console.log('Initializing new storage file...')
+        const emptyStorage = (this.machine.io4 as Storage).getData()
+        await writeFile(this.options.storage, emptyStorage)
+        console.log(`Storage file created: ${this.options.storage}`)
       }
     }
   }
@@ -548,6 +550,9 @@ class Emulator {
   }
 
   private shutdown(): void {
+    // Stop the machine loop to prevent further rendering after window close
+    this.machine.stop()
+
     // Close all connected controllers
     for (const [id, controller] of this.controllers.entries()) {
       if (!controller.closed) {

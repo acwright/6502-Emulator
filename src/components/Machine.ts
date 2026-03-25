@@ -53,7 +53,7 @@ export class Machine {
 
   target: string
   isRunning: boolean = false
-  frequency: number = 2000000 // 2 MHz
+  frequency: number = 1000000 // 1 MHz
   scale: number = 2
   frames: number = 0
   startTime: number = Date.now()
@@ -349,11 +349,11 @@ export class Machine {
       this.ioCycleAccumulator++
       if (this.ioCycleAccumulator >= this.ioTickInterval) {
         // Skip ticking RAMBank IO1 and IO2 since they have no timing behavior
-        this.io3.tick(this.frequency)
-        this.io4.tick(this.frequency)
-        this.io6.tick(this.frequency)
-        this.io7.tick(this.frequency)
-        this.io8.tick(this.frequency)
+        this.io3.tick(this.frequency, this.ioTickInterval)
+        this.io4.tick(this.frequency, this.ioTickInterval)
+        this.io6.tick(this.frequency, this.ioTickInterval)
+        this.io7.tick(this.frequency, this.ioTickInterval)
+        this.io8.tick(this.frequency, this.ioTickInterval)
         this.ioCycleAccumulator = 0
       }
     }
@@ -383,11 +383,11 @@ export class Machine {
     this.ioCycleAccumulator++
     if (this.ioCycleAccumulator >= this.ioTickInterval) {
       // Skip ticking RAMBank IO1 and IO2 since they have no timing behavior
-      this.io3.tick(this.frequency)
-      this.io4.tick(this.frequency)
-      this.io6.tick(this.frequency)
-      this.io7.tick(this.frequency)
-      this.io8.tick(this.frequency)
+      this.io3.tick(this.frequency, this.ioTickInterval)
+      this.io4.tick(this.frequency, this.ioTickInterval)
+      this.io6.tick(this.frequency, this.ioTickInterval)
+      this.io7.tick(this.frequency, this.ioTickInterval)
+      this.io8.tick(this.frequency, this.ioTickInterval)
       this.ioCycleAccumulator = 0
     }
   }
@@ -450,11 +450,11 @@ export class Machine {
           this.ioCycleAccumulator++
           if (this.ioCycleAccumulator >= this.ioTickInterval) {
             // Skip ticking RAMBank IO1 and IO2 since they have no timing behavior
-            this.io3.tick(this.frequency)
-            this.io4.tick(this.frequency)
-            this.io6.tick(this.frequency)
-            this.io7.tick(this.frequency)
-            this.io8.tick(this.frequency)
+            this.io3.tick(this.frequency, this.ioTickInterval)
+            this.io4.tick(this.frequency, this.ioTickInterval)
+            this.io6.tick(this.frequency, this.ioTickInterval)
+            this.io7.tick(this.frequency, this.ioTickInterval)
+            this.io8.tick(this.frequency, this.ioTickInterval)
             this.ioCycleAccumulator = 0
           }
         }

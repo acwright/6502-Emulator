@@ -167,13 +167,8 @@ export class RTC implements IO {
   }
 
   private markUserTimeWrite(): void {
+    // Actual copy into internal registers happens on the TE falling edge (1→0)
     this.pendingUserToInternal = true
-    if ((this.controlB & 0x80) !== 0 &&
-        this.transferCycleCounter >= this.getTransferCyclesRequired()) {
-      this.copyUserToInternal()
-      this.pendingUserToInternal = false
-      this.userSyncNeeded = false
-    }
   }
 
   /**
@@ -416,13 +411,28 @@ export class RTC implements IO {
         // Writing 1 to flag bits (0-3) clears them; control bits (4-7) are written normally
         this.controlA = (data & 0xF0) | ((this.controlA & 0x0F) & ~(data & 0x0F))
         break
-      case 0x0F:
+      case 0x0F: {
+        const previousTE = (this.controlB & 0x80) !== 0
         this.controlB = data
+        const currentTE = (this.controlB & 0x80) !== 0
+        // TE falling edge (1→0): commit buffered user writes into internal counters
+        if (previousTE && !currentTE) {
+          if (this.pendingUserToInternal) {
+            this.copyUserToInternal()
+            this.pendingUserToInternal = false
+          }
+          // Mirror the committed time back so CPU reads it immediately
+          this.copyInternalToUser()
+          this.userSyncNeeded = false
+          // Restart the 1-second accumulator for a clean second
+          this.cycleCounter = 0
+        }
         this.raiseInterruptIfEnabled(0x04, 0x04)
         if ((this.controlB & 0x02) !== 0) {
           this.reloadWatchdog()
         }
         break
+      }
       case 0x10:
         this.ramAddress = data // Set RAM address pointer
         break
@@ -439,31 +449,10 @@ export class RTC implements IO {
     }
   }
 
-  tick(frequency: number): void {
-    // Advance RTC based on CPU frequency
-    // Store the frequency for use in time calculations
-    this.cpuFrequency = frequency > 0 ? frequency : 2000000
-    
+  tick(frequency: number, cycles: number = 1): void {
+    this.cpuFrequency = frequency > 0 ? frequency : 1000000
+
     const teEnabled = (this.controlB & 0x80) !== 0
-    if (teEnabled !== this.lastTEEnabled) {
-      this.lastTEEnabled = teEnabled
-      this.transferCycleCounter = 0
-    }
-
-    if (teEnabled) {
-      this.transferCycleCounter++
-    } else {
-      this.transferCycleCounter = 0
-    }
-
-    const transferReady = teEnabled &&
-      this.transferCycleCounter >= this.getTransferCyclesRequired()
-
-    if (transferReady && this.pendingUserToInternal) {
-      this.copyUserToInternal()
-      this.pendingUserToInternal = false
-      this.userSyncNeeded = false
-    }
 
     if ((this.monthControl & 0x80) === 0) {
       // Oscillator disabled
@@ -471,7 +460,7 @@ export class RTC implements IO {
       return
     }
 
-    this.cycleCounter++
+    this.cycleCounter += cycles
 
     // Advance time when we've accumulated enough cycles for 1 second
     if (this.cycleCounter >= this.cpuFrequency) {
@@ -479,13 +468,16 @@ export class RTC implements IO {
       this.incrementTime()
       this.checkAlarm()
 
-      if (transferReady) {
+      if (!teEnabled) {
+        // TE=0: normal operation — mirror internal registers to user every second
         this.copyInternalToUser()
         this.userSyncNeeded = false
       } else {
+        // TE=1: user registers are frozen during write window
         this.userSyncNeeded = true
       }
-    } else if (transferReady && this.userSyncNeeded) {
+    } else if (!teEnabled && this.userSyncNeeded) {
+      // Internal ticked while TE=1; now TE=0 so sync immediately
       this.copyInternalToUser()
       this.userSyncNeeded = false
     }

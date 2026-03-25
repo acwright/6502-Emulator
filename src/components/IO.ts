@@ -5,7 +5,7 @@ export interface IO {
 
   read(address: number): number
   write(address: number, data: number): void
-  tick(frequency: number): void
+  tick(frequency: number, cycles?: number): void
   reset(coldStart: boolean): void
   
 }
