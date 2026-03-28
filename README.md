@@ -33,8 +33,8 @@ This emulator provides a complete software implementation of a 65C02-based compu
 - **I/O Peripherals**
   - **Serial Card (ACIA)**: 6551 UART communication with configurable baud rate, parity, data/stop bits
   - **Storage Card**: Compact Flash 8-bit IDE mode persistent storage emulation
-  - **RTC Card**: DS1511Y real-time clock emulation with IRQ/NMI support
-  - **GPIO Card (VIA)**: 65C22 VIA (Versatile Interface Adapter) emulation
+  - **RTC Card**: DS1511Y+ real-time clock emulation with IRQ/NMI support
+  - **GPIO Card (VIA)**: 6522 VIA (Versatile Interface Adapter) emulation
     - Two 8-bit bidirectional I/O ports
     - Two 16-bit timers with interrupts
     - Shift register for serial I/O
@@ -182,10 +182,10 @@ Machine (COB)
 └── I/O Cards (8 slots)
     ├── IO1: RAM Card (Expansion)
     ├── IO2: RAM Card (Expansion)
-    ├── IO3: RTC Card (DS1511Y Real-Time Clock)
+    ├── IO3: RTC Card (DS1511Y+ Real-Time Clock)
     ├── IO4: Storage Card (Compact Flash 8-bit IDE Mode)
     ├── IO5: Serial Card (6551 ACIA)
-    ├── IO6: VIA Card (65C22 GPIO)
+    ├── IO6: VIA Card (6522 GPIO)
     ├── IO7: Sound Card (6581 SID)
     └── IO8: Video Card (TMS9918)
 ```
@@ -201,7 +201,7 @@ Machine (VCS)
 ├── ROM (System BIOS/Monitor)
 ├── Cart (Optional Cartridge)
 └── I/O Cards (8 slots)
-    ├── IO6: VIA Card (65C22 GPIO)
+    ├── IO6: VIA Card (6522 GPIO)
     ├── IO7: Sound Card (6581 SID)
     └── IO8: Video Card (TMS9918)
 ```
@@ -218,7 +218,7 @@ Machine (KIM)
 ├── Cart (Optional Cartridge)
 └── I/O Cards (8 slots)
     ├── IO5: Serial Card (6551 ACIA)
-    └── IO8: VIA Card (65C22 GPIO)
+    └── IO8: VIA Card (6522 GPIO)
             ├── LCD Attachment (HD44780 16×2 character display)
             └── Keypad Attachment (4×6 matrix keypad)
 ```
@@ -236,10 +236,10 @@ Machine (DEV)
 └── I/O Cards (8 slots)
     ├── IO1: RAM Card (Expansion)
     ├── IO2: RAM Card (Expansion)
-    ├── IO3: RTC Card (DS1511Y Real-Time Clock)
+    ├── IO3: RTC Card (DS1511Y+ Real-Time Clock)
     ├── IO4: Storage Card (Compact Flash 8-bit IDE Mode)
     ├── IO5: Serial Card (6551 ACIA)
-    ├── IO6: VIA Card (65C22 GPIO)
+    ├── IO6: VIA Card (6522 GPIO)
     └── IO8: Terminal Card (VTAC)
 ```
 
@@ -277,7 +277,7 @@ src/
 │   ├── IO.ts               # I/O interface
 │   └── IO/                 # I/O peripheral implementations
 │       ├── ACIA.ts         # 6551 Serial card
-│       ├── VIA.ts          # 65C22 GPIO card
+│       ├── VIA.ts          # 6522 GPIO card
 │       ├── RAMBank.ts      # RAM expansion card
 │       ├── RTC.ts          # Real-time clock card
 │       ├── Sound.ts        # 6581 SID sound card

@@ -49,7 +49,7 @@ const createMockAttachment = (options: {
   } as Attachment & { setPortAValue: (v: number) => void; setPortBValue: (v: number) => void }
 }
 
-describe('VIA (65C22 VIA)', () => {
+describe('VIA (6522 VIA)', () => {
   let gpio: VIA
 
   beforeEach(() => {

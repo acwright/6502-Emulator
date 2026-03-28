@@ -1,7 +1,7 @@
 import { IO } from '../IO'
 
 /**
- * DS1511Y Real-Time Clock IC Emulation
+ * DS1511Y+ Real-Time Clock IC Emulation
  * 
  * Register Map (0x00-0x1F):
  * 0x00: Seconds (BCD, 00-59)
@@ -93,7 +93,7 @@ export class RTC implements IO {
     this.internalMonth = this.decimalToBCD(now.getMonth() + 1)
     this.internalYear = this.decimalToBCD(now.getFullYear() % 100)
     this.internalCentury = this.decimalToBCD(Math.floor(now.getFullYear() / 100))
-    this.monthControl = 0x00 // EOSC=0: oscillator enabled (DS1511Y default)
+    this.monthControl = 0x00 // EOSC=0: oscillator enabled (DS1511Y+ default)
     this.copyInternalToUser()
     this.pendingUserToInternal = false
     this.userSyncNeeded = false
@@ -455,7 +455,7 @@ export class RTC implements IO {
     const teEnabled = (this.controlB & 0x80) !== 0
 
     if ((this.monthControl & 0x80) !== 0) {
-      // EOSC=1: oscillator disabled (DS1511Y active-low enable)
+      // EOSC=1: oscillator disabled (DS1511Y+ active-low enable)
       this.stepWatchdog()
       return
     }

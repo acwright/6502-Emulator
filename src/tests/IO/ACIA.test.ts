@@ -141,7 +141,7 @@ describe('ACIA (6551 ACIA)', () => {
         const mockIRQ = jest.fn()
         serialCard.raiseIRQ = mockIRQ
 
-        serialCard.write(0x02, 0x02) // RIIE=1: receive IRQ disabled (W65C51N: bit1=1 disables)
+        serialCard.write(0x02, 0x02) // RIIE=1: receive IRQ disabled (R6551: bit1=1 disables)
         serialCard.onData(0x42)
 
         expect(mockIRQ).not.toHaveBeenCalled()

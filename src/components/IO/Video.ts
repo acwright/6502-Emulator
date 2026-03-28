@@ -566,9 +566,10 @@ export class Video implements IO {
 
     let spritesShown = 0
 
-    // Clear status at start of frame (matches C reference)
+    // Clear sprite-related status bits at start of frame, but preserve
+    // the interrupt flag (bit 7) — it is only cleared on CPU status read
     if (y === 0) {
-      this.status = 0
+      this.status &= STATUS_INT
     }
 
     for (let spriteIdx = 0; spriteIdx < MAX_SPRITES; spriteIdx++) {

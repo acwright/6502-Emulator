@@ -4,7 +4,7 @@ import { AttachmentBase } from './Attachment'
  * HD44780 LCD Controller Emulation — GPIO Attachment
  *
  * Emulates a 16×2 (or configurable) character LCD with HD44780 controller
- * connected via 8-bit parallel interface on a 65C22 VIA.
+ * connected via 8-bit parallel interface on a 6522 VIA.
  *
  * Pin mapping (accent on VIA ports):
  *   Port B (D0–D7): 8-bit data bus

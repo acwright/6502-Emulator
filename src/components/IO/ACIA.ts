@@ -1,7 +1,7 @@
 import { IO } from '../IO'
 
 /**
- * ACIA - Emulates a 6551 ACIA (Asynchronous Communications Interface Adapter)
+ * ACIA - Emulates a R6551 ACIA (Asynchronous Communications Interface Adapter)
  * 
  * Register Map:
  * $00: Data Register (read/write)

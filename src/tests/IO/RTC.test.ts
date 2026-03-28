@@ -18,7 +18,7 @@ const setTime = (rtc: RTC, values: {
 	rtc.write(0x02, values.hours)
 	rtc.write(0x03, values.dayOfWeek)
 	rtc.write(0x04, values.date)
-	rtc.write(0x05, values.month) // EOSC=0: oscillator enabled (DS1511Y default)
+	rtc.write(0x05, values.month) // EOSC=0: oscillator enabled (DS1511Y+ default)
 	rtc.write(0x06, values.year)
 	rtc.write(0x07, values.century)
 	rtc.write(0x0f, 0x00) // Clear TE: falling edge commits user to internal

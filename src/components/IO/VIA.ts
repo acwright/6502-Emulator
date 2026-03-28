@@ -2,9 +2,9 @@ import { IO } from '../IO'
 import { Attachment } from './Attachments/Attachment'
 
 /**
- * VIA - Emulates the 65C22 VIA (Versatile Interface Adapter)
+ * VIA - Emulates the 6522 VIA (Versatile Interface Adapter)
  * 
- * The 65C22 VIA provides:
+ * The 6522 VIA provides:
  * - Two 8-bit bidirectional I/O ports (Port A and Port B)
  * - Two 16-bit timers with interrupt generation
  * - Shift register for serial I/O
