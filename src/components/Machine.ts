@@ -15,7 +15,6 @@ import { JoystickAttachment } from './IO/Attachments/JoystickAttachment'
 import { LCDAttachment } from './IO/Attachments/LCDAttachment'
 import { KeypadAttachment } from './IO/Attachments/KeypadAttachment'
 import { Empty } from './IO/Empty'
-import { Terminal } from './IO/Terminal'
 import { IO } from './IO'
 
 export class Machine {
@@ -146,22 +145,35 @@ export class Machine {
       const rtc = new RTC()
       const storage = new Storage()
       const via = new VIA()
+      const sound = new Sound()
+      const video = new Video()
 
       this.io1 = new RAMBank()
       this.io2 = new RAMBank()
       this.io3 = rtc
       this.io4 = storage
       this.io6 = via
-      this.io7 = new Empty()
-      this.io8 = new Terminal()
+      this.io7 = sound
+      this.io8 = video
 
       // Connect RTC IRQ/NMI to CPU
       rtc.raiseIRQ = () => this.cpu.irq()
       rtc.raiseNMI = () => this.cpu.nmi()
 
-      // Connect VIA IRQ/NMI to CPU
+      // Connect Video IRQ/NMI to CPU
+      video.raiseIRQ = () => this.cpu.irq()
+      video.raiseNMI = () => this.cpu.nmi()
+
+      // Connect GPIO VIA IRQ/NMI to CPU
       via.raiseIRQ = () => this.cpu.irq()
       via.raiseNMI = () => this.cpu.nmi()
+
+      // Connect Sound pushSamples callback
+      sound.pushSamples = (samples: Float32Array) => {
+        if (this.play) {
+          this.play(samples)
+        }
+      }
 
       // Create standard GPIO attachments
       this.keyboardMatrixAttachment = new KeyboardMatrixAttachment(10)

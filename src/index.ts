@@ -5,7 +5,6 @@ import { Machine } from './components/Machine'
 import { Command, Option } from 'commander'
 import { SerialPort } from 'serialport'
 import { Video } from './components/IO/Video'
-import { Terminal } from './components/IO/Terminal'
 import { Storage } from './components/IO/Storage'
 import { Sound } from './components/IO/Sound'
 import sdl from '@kmamal/sdl'
@@ -364,40 +363,10 @@ class Emulator {
         this.window.render(WIDTH, HEIGHT, WIDTH * 4, 'rgba32', Video.buffer)
       }
     } else if (this.options.target === 'dev') {
-      const devBoard = this.machine.io8 as Terminal
-      const rgbaBuffer = Buffer.alloc(WIDTH * HEIGHT * 4)
+      const video = this.machine.io8 as Video
       this.machine.render = () => {
         if (!this.window) { return }
-        const src = devBoard.vtac.buffer
-        for (let i = 0; i < WIDTH * HEIGHT; i++) {
-          const v = src[i]
-          const off = i * 4
-          const r3 = (v >> 5) & 0x07
-          const g3 = (v >> 2) & 0x07
-          const b2 = v & 0x03
-          rgbaBuffer[off]     = (r3 << 5) | (r3 << 2) | (r3 >> 1)
-          rgbaBuffer[off + 1] = (g3 << 5) | (g3 << 2) | (g3 >> 1)
-          rgbaBuffer[off + 2] = (b2 << 6) | (b2 << 4) | (b2 << 2) | b2
-          rgbaBuffer[off + 3] = 0xFF
-        }
-        this.window.render(WIDTH, HEIGHT, WIDTH * 4, 'rgba32', rgbaBuffer)
-
-        // Synthesize and play any queued VTAC bell tones
-        if (this.machine.play && this.audioDevice) {
-          const sampleRate = this.audioDevice.frequency
-          while (devBoard.vtac.hasQueuedBells()) {
-            const bell = devBoard.vtac.getNextBell()
-            if (bell) {
-              const numSamples = Math.floor((bell.duration / 60) * sampleRate)
-              const samples = new Float32Array(numSamples)
-              const twoPiF = 2 * Math.PI * bell.frequency
-              for (let i = 0; i < numSamples; i++) {
-                samples[i] = Math.sin(twoPiF * i / sampleRate)
-              }
-              this.machine.play(samples)
-            }
-          }
-        }
+        this.window.render(WIDTH, HEIGHT, WIDTH * 4, 'rgba32', video.buffer)
       }
     }
 

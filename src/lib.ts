@@ -15,7 +15,6 @@ export { ACIA } from './components/IO/ACIA'
 export { SIDVoice, Sound } from './components/IO/Sound'
 export { Storage } from './components/IO/Storage'
 export { Video } from './components/IO/Video'
-export { Terminal } from './components/IO/Terminal'
 
 // GPIO attachments
 export type { Attachment } from './components/IO/Attachments/Attachment'
