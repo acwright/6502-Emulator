@@ -38,7 +38,6 @@ This emulator provides a complete software implementation of a 65C02-based compu
     - Two 8-bit bidirectional I/O ports
     - Two 16-bit timers with interrupts
     - Shift register for serial I/O
-  - **Terminal Card**: VTAC fantasy terminal emulation for text-based development
   
 - **Input Devices**
   - Keyboard support (matrix and encoder modes)
@@ -240,7 +239,8 @@ Machine (DEV)
     ├── IO4: Storage Card (Compact Flash 8-bit IDE Mode)
     ├── IO5: Serial Card (6551 ACIA)
     ├── IO6: VIA Card (6522 GPIO)
-    └── IO8: Terminal Card (VTAC)
+    ├── IO7: Sound Card (6581 SID)
+    └── IO8: Video Card (TMS9918)
 ```
 
 ### VIA (GPIO) Attachments
@@ -283,7 +283,6 @@ src/
 │       ├── Sound.ts        # 6581 SID sound card
 │       ├── Storage.ts      # Compact Flash storage card
 │       ├── Video.ts        # TMS9918 video card
-│       ├── Terminal.ts     # VTAC terminal card
 │       ├── Empty.ts        # Empty slot placeholder
 │       └── Attachments/
 │           ├── Attachment.ts
@@ -331,7 +330,6 @@ npm publish
 - **Graphics**: SDL via @kmamal/sdl
 - **Serial**: SerialPort library
 - **CLI**: Commander.js
-- **Terminal**: VTAC Terminal library
 
 ## Performance
 
