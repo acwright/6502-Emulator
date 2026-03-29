@@ -35,11 +35,6 @@ describe('RAMBank', () => {
     it('should start on bank 0', () => {
       expect(ramCard.currentBank).toBe(0)
     })
-
-    it('should have IRQ and NMI callbacks', () => {
-      expect(typeof ramCard.raiseIRQ).toBe('function')
-      expect(typeof ramCard.raiseNMI).toBe('function')
-    })
   })
 
   describe('Reading', () => {
@@ -58,14 +53,15 @@ describe('RAMBank', () => {
       expect(ramCard.read(0x3FE)).toBe(0xCD)
     })
 
-    it('should read bank control register and return current bank', () => {
-      ramCard.currentBank = 0
+    it('should read $3FF from data array (contains bank number after write-through)', () => {
+      // Writing to $3FF sets the bank and writes the value into the new bank's data
+      ramCard.write(RAMBank.BANK_CONTROL_REGISTER, 0)
       expect(ramCard.read(RAMBank.BANK_CONTROL_REGISTER)).toBe(0)
 
-      ramCard.currentBank = 42
+      ramCard.write(RAMBank.BANK_CONTROL_REGISTER, 42)
       expect(ramCard.read(RAMBank.BANK_CONTROL_REGISTER)).toBe(42)
 
-      ramCard.currentBank = 255
+      ramCard.write(RAMBank.BANK_CONTROL_REGISTER, 255)
       expect(ramCard.read(RAMBank.BANK_CONTROL_REGISTER)).toBe(255)
     })
   })
@@ -237,11 +233,6 @@ describe('RAMBank', () => {
       expect(typeof ramCard.write).toBe('function')
       expect(typeof ramCard.tick).toBe('function')
       expect(typeof ramCard.reset).toBe('function')
-    })
-
-    it('should have raiseIRQ and raiseNMI callbacks', () => {
-      expect(ramCard.raiseIRQ()).toBeUndefined()
-      expect(ramCard.raiseNMI()).toBeUndefined()
     })
   })
 

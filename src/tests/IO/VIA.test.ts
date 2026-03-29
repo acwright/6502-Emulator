@@ -374,31 +374,25 @@ describe('VIA (6522 VIA)', () => {
   })
 
   describe('IRQ Generation', () => {
-    it('should call raiseIRQ when enabled interrupt is triggered', () => {
-      const mockIRQ = jest.fn()
-      gpio.raiseIRQ = mockIRQ
-
+    it('should return IRQ status from tick when enabled interrupt is triggered', () => {
       gpio.write(0x0E, 0xC0) // Enable T1 interrupt
       gpio.write(0x04, 0x01)
       gpio.write(0x05, 0x00)
 
       gpio.tick(1000000)
-      gpio.tick(1000000)
+      const result = gpio.tick(1000000)
 
-      expect(mockIRQ).toHaveBeenCalled()
+      expect(result & 0x80).toBe(0x80)
     })
 
-    it('should not call raiseIRQ when interrupt is not enabled', () => {
-      const mockIRQ = jest.fn()
-      gpio.raiseIRQ = mockIRQ
-
+    it('should not return IRQ status from tick when interrupt is not enabled', () => {
       gpio.write(0x04, 0x01)
       gpio.write(0x05, 0x00)
 
       gpio.tick(1000000)
-      gpio.tick(1000000)
+      const result = gpio.tick(1000000)
 
-      expect(mockIRQ).not.toHaveBeenCalled()
+      expect(result & 0x80).toBe(0)
     })
   })
 

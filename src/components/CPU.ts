@@ -28,6 +28,8 @@ export class CPU {
   cyclesRem: number = 0               // Counts how many cycles the current instruction has remaining
   cycles: number            = 0       // Counts the total number of cycles executed
 
+  private irqLine: boolean = false
+
   a: number   = 0x00
   x: number   = 0x00
   y: number   = 0x00
@@ -103,6 +105,14 @@ export class CPU {
     }
   }
 
+  irqTrigger(): void {
+    this.irqLine = true
+  }
+
+  irqClear(): void {
+    this.irqLine = false
+  }
+
   nmi(): void {
       // Push the program counter onto the stack
       this.write(0x0100 + this.sp, (this.pc >> 8) & 0x00FF)
@@ -148,6 +158,11 @@ export class CPU {
       // addrMode() and opcode() return 1 or 0 if additional clock cycles are required
       this.cyclesRem += addCycleAddrMode & addCycleOpcode
       this.cycles    += addCycleAddrMode & addCycleOpcode
+
+      // Level-triggered IRQ: check after instruction decode
+      if (this.irqLine) {
+        this.irq()
+      }
     }
 
     this.cyclesRem--
@@ -405,13 +420,33 @@ export class CPU {
   private ADC(): number {
     this.fetch()
 
-    this.temp = this.a + this.fetched + this.getFlag(CPU.C)
-    this.setFlag(CPU.C, (this.temp & 0xFF00) != 0)
-    this.setFlag(CPU.Z, (this.temp & 0x00FF) == 0)
-    this.setFlag(CPU.V, ((this.temp ^ this.a) & (this.temp ^ this.fetched) & 0x0080) != 0)
-    this.setFlag(CPU.N, (this.temp & 0x0080) != 0)
+    if (this.getFlag(CPU.D)) {
+      // BCD decimal mode (65C02)
+      const c = this.getFlag(CPU.C)
+      const bin = this.a + this.fetched + c
 
-    this.a = this.temp & 0x00FF
+      let lo = (this.a & 0x0F) + (this.fetched & 0x0F) + c
+      if (lo > 0x09) lo += 0x06
+      let hi = (this.a >> 4) + (this.fetched >> 4) + (lo > 0x0F ? 1 : 0)
+      if (hi > 0x09) hi += 0x06
+
+      const result = (hi << 4) | (lo & 0x0F)
+
+      this.setFlag(CPU.Z, (bin & 0xFF) === 0)
+      this.setFlag(CPU.V, ((this.a ^ bin) & (this.fetched ^ bin) & 0x80) !== 0)
+      this.setFlag(CPU.N, (bin & 0x80) !== 0)
+      this.setFlag(CPU.C, hi > 0x0F)
+
+      this.a = result & 0xFF
+    } else {
+      this.temp = this.a + this.fetched + this.getFlag(CPU.C)
+      this.setFlag(CPU.C, (this.temp & 0xFF00) != 0)
+      this.setFlag(CPU.Z, (this.temp & 0x00FF) == 0)
+      this.setFlag(CPU.V, ((this.temp ^ this.a) & (this.temp ^ this.fetched) & 0x0080) != 0)
+      this.setFlag(CPU.N, (this.temp & 0x0080) != 0)
+
+      this.a = this.temp & 0x00FF
+    }
 
     return 1
   }
@@ -441,11 +476,11 @@ export class CPU {
 
   private BCC(): number {
     if (this.getFlag(CPU.C) == 0) {
-      this.cycles++
+      this.cyclesRem++
       this.addrAbs = this.pc + this.addrRel
 
       if ((this.addrAbs & 0xFF00) != (this.pc & 0xFF00)) {
-        this.cycles++
+        this.cyclesRem++
       }
 
       this.pc = this.addrAbs
@@ -455,11 +490,11 @@ export class CPU {
 
   private BCS(): number {
     if (this.getFlag(CPU.C) == 1) {
-      this.cycles++
+      this.cyclesRem++
       this.addrAbs = this.pc + this.addrRel
 
       if ((this.addrAbs & 0xFF00) != (this.pc & 0xFF00)) {
-        this.cycles++
+        this.cyclesRem++
       }
 
       this.pc = this.addrAbs
@@ -469,10 +504,10 @@ export class CPU {
 
   private BEQ(): number {
     if (this.getFlag(CPU.Z) == 1) {
-      this.cycles++
+      this.cyclesRem++
       this.addrAbs = this.pc + this.addrRel
       if ((this.addrAbs & 0xFF00) != (this.pc & 0xFF00)) {
-        this.cycles++
+        this.cyclesRem++
       }
 
       this.pc = this.addrAbs
@@ -489,13 +524,21 @@ export class CPU {
     return 0
   }
 
+  private BIT_IMM(): number {
+    this.fetch()
+    this.temp = this.a & this.fetched
+    this.setFlag(CPU.Z, (this.temp & 0x00FF) == 0x00)
+    // N and V are NOT modified for BIT immediate (65C02)
+    return 0
+  }
+
   private BMI(): number {
     if (this.getFlag(CPU.N) == 1) {
-      this.cycles++
+      this.cyclesRem++
       this.addrAbs = this.pc + this.addrRel
 
       if ((this.addrAbs & 0xFF00) != (this.pc & 0xFF00)) {
-        this.cycles++
+        this.cyclesRem++
       }
 
       this.pc = this.addrAbs
@@ -505,11 +548,11 @@ export class CPU {
 
   private BNE(): number {
     if (this.getFlag(CPU.Z) == 0) {
-      this.cycles++
+      this.cyclesRem++
       this.addrAbs = this.pc + this.addrRel
 
       if ((this.addrAbs & 0xFF00) != (this.pc & 0xFF00)) {
-        this.cycles++
+        this.cyclesRem++
       }
 
       this.pc = this.addrAbs
@@ -519,11 +562,11 @@ export class CPU {
 
   private BPL(): number {
     if (this.getFlag(CPU.N) == 0) {
-      this.cycles++
+      this.cyclesRem++
       this.addrAbs = this.pc + this.addrRel
 
       if ((this.addrAbs & 0xFF00) != (this.pc & 0xFF00)) {
-        this.cycles++
+        this.cyclesRem++
       }
 
       this.pc = this.addrAbs
@@ -552,11 +595,11 @@ export class CPU {
   
   private BVC(): number {
     if (this.getFlag(CPU.V) == 0) {
-      this.cycles++
+      this.cyclesRem++
       this.addrAbs = this.pc + this.addrRel
 
       if ((this.addrAbs & 0xFF00) != (this.pc & 0xFF00)) {
-        this.cycles++
+        this.cyclesRem++
       }
 
       this.pc = this.addrAbs
@@ -566,11 +609,11 @@ export class CPU {
 
   private BVS(): number {
     if (this.getFlag(CPU.V) == 1) {
-      this.cycles++
+      this.cyclesRem++
       this.addrAbs = this.pc + this.addrRel
 
       if ((this.addrAbs & 0xFF00) != (this.pc & 0xFF00)) {
-        this.cycles++
+        this.cyclesRem++
       }
 
       this.pc = this.addrAbs
@@ -851,15 +894,35 @@ export class CPU {
   private SBC(): number {
     this.fetch()
 
-    const value = this.fetched ^ 0x00FF
-    
-    this.temp = this.a + value + this.getFlag(CPU.C)
-    this.setFlag(CPU.C, (this.temp & 0xFF00) != 0)
-    this.setFlag(CPU.Z, (this.temp & 0x00FF) == 0)
-    this.setFlag(CPU.V, ((this.temp ^ this.a) & (this.temp ^ value) & 0x0080) != 0)
-    this.setFlag(CPU.N, (this.temp & 0x0080) != 0)
+    if (this.getFlag(CPU.D)) {
+      // BCD decimal mode (65C02)
+      const c = this.getFlag(CPU.C)
+      const bin = this.a - this.fetched - (1 - c)
 
-    this.a = this.temp & 0x00FF
+      let lo = (this.a & 0x0F) - (this.fetched & 0x0F) - (1 - c)
+      if (lo < 0) lo = ((lo - 0x06) & 0x0F) | ((this.a & 0xF0) - (this.fetched & 0xF0) - 0x10)
+      else lo = (lo & 0x0F) | ((this.a & 0xF0) - (this.fetched & 0xF0))
+      if (lo < 0) lo -= 0x60
+
+      const result = lo & 0xFF
+
+      this.setFlag(CPU.Z, (bin & 0xFF) === 0)
+      this.setFlag(CPU.V, ((this.a ^ bin) & (~this.fetched ^ bin) & 0x80) !== 0)
+      this.setFlag(CPU.N, (bin & 0x80) !== 0)
+      this.setFlag(CPU.C, (bin & 0xFFFF) < 0x100)
+
+      this.a = result
+    } else {
+      const value = this.fetched ^ 0x00FF
+
+      this.temp = this.a + value + this.getFlag(CPU.C)
+      this.setFlag(CPU.C, (this.temp & 0xFF00) != 0)
+      this.setFlag(CPU.Z, (this.temp & 0x00FF) == 0)
+      this.setFlag(CPU.V, ((this.temp ^ this.a) & (this.temp ^ value) & 0x0080) != 0)
+      this.setFlag(CPU.N, (this.temp & 0x0080) != 0)
+
+      this.a = this.temp & 0x00FF
+    }
 
     return 1
   }
@@ -1254,7 +1317,7 @@ export class CPU {
     { name: 'STX', cycles: 3, opcode: this.STX.bind(this), addrMode: this.ZP0.bind(this) },
     { name: 'SMB0', cycles: 5, opcode: this.SMB0.bind(this), addrMode: this.ZP0.bind(this) },
     { name: 'DEY', cycles: 2, opcode: this.DEY.bind(this), addrMode: this.IMP.bind(this) },
-    { name: 'BIT', cycles: 2, opcode: this.BIT.bind(this), addrMode: this.IMM.bind(this) },
+    { name: 'BIT', cycles: 2, opcode: this.BIT_IMM.bind(this), addrMode: this.IMM.bind(this) },
     { name: 'TXA', cycles: 2, opcode: this.TXA.bind(this), addrMode: this.IMP.bind(this) },
     { name: '???', cycles: 2, opcode: this.XXX.bind(this), addrMode: this.IMP.bind(this) },
     { name: 'STY', cycles: 4, opcode: this.STY.bind(this), addrMode: this.ABS.bind(this) },

@@ -127,34 +127,31 @@ describe('ACIA (6551 ACIA)', () => {
         // Should not throw and should process command
       })
 
-      it('should enable receive IRQ when bit 2 is set', () => {
-        const mockIRQ = jest.fn()
-        serialCard.raiseIRQ = mockIRQ
-
-        serialCard.write(0x02, 0x04) // Enable receive IRQ
+      it('should enable receive IRQ when RIIE bit (bit 1) is clear', () => {
+        serialCard.write(0x02, 0x04) // bit 1 = 0: receive IRQ enabled
         serialCard.onData(0x42)
 
-        expect(mockIRQ).toHaveBeenCalled()
+        const status = serialCard.read(0x01)
+        expect(status & 0x80).toBe(0x80) // IRQ flag set in status
       })
 
       it('should disable receive IRQ when RIIE bit (bit 1) is set', () => {
-        const mockIRQ = jest.fn()
-        serialCard.raiseIRQ = mockIRQ
-
         serialCard.write(0x02, 0x02) // RIIE=1: receive IRQ disabled (R6551: bit1=1 disables)
         serialCard.onData(0x42)
 
-        expect(mockIRQ).not.toHaveBeenCalled()
+        const status = serialCard.read(0x01)
+        expect(status & 0x80).toBe(0) // IRQ flag not set
       })
 
       it('should enable echo mode when REM bit (bit 4) is set', () => {
+        const mockTransmit = jest.fn()
+        serialCard.transmit = mockTransmit
+
         serialCard.write(0x02, 0x10) // REM=1: echo mode enabled (bit 4 per 6551 spec)
         serialCard.onData(0x42)
         
-        // In echo mode, received data is added to transmit buffer
-        // Verify the transmit buffer will send the echoed byte
-        const statusBeforeTick = serialCard.read(0x01)
-        expect(statusBeforeTick & 0x10).toBe(0) // TDRE should be clear (data in transmit buffer)
+        // In echo mode, received data is echoed immediately via transmit callback
+        expect(mockTransmit).toHaveBeenCalledWith(0x42)
       })
     })
 
@@ -185,17 +182,12 @@ describe('ACIA (6551 ACIA)', () => {
       serialCard.transmit = mockTransmit
 
       serialCard.write(0x00, 0x42)
-      
-      // Need to tick enough times for byte transmission
-      // With default baud of 115200 and 1MHz clock: ~87 cycles per byte
-      for (let i = 0; i < 100; i++) {
-        serialCard.tick(1000000)
-      }
+      serialCard.tick(1000000) // TX happens immediately on next tick
 
       expect(mockTransmit).toHaveBeenCalledWith(0x42)
     })
 
-    it('should handle multiple bytes in transmission', () => {
+    it('should only transmit the last written byte if overwritten before tick', () => {
       const mockTransmit = jest.fn()
       serialCard.transmit = mockTransmit
 
@@ -203,13 +195,11 @@ describe('ACIA (6551 ACIA)', () => {
       serialCard.write(0x00, 0x43)
       serialCard.write(0x00, 0x44)
 
-      for (let i = 0; i < 300; i++) {
-        serialCard.tick(1000000)
-      }
+      serialCard.tick(1000000)
 
-      expect(mockTransmit).toHaveBeenNthCalledWith(1, 0x42)
-      expect(mockTransmit).toHaveBeenNthCalledWith(2, 0x43)
-      expect(mockTransmit).toHaveBeenNthCalledWith(3, 0x44)
+      // Single-byte TX register: only the last write is transmitted
+      expect(mockTransmit).toHaveBeenCalledTimes(1)
+      expect(mockTransmit).toHaveBeenCalledWith(0x44)
     })
 
     it('should set TDRE flag after transmission complete', () => {
@@ -219,9 +209,7 @@ describe('ACIA (6551 ACIA)', () => {
       serialCard.write(0x00, 0x42)
       expect(serialCard.read(0x01) & 0x10).toBe(0) // TDRE clear
 
-      for (let i = 0; i < 100; i++) {
-        serialCard.tick(1000000)
-      }
+      serialCard.tick(1000000)
 
       expect(serialCard.read(0x01) & 0x10).toBe(0x10) // TDRE set
     })
@@ -240,13 +228,12 @@ describe('ACIA (6551 ACIA)', () => {
       expect(status & 0x08).toBe(0x08)
     })
 
-    it('should handle multiple received bytes', () => {
+    it('should handle multiple received bytes (overrun)', () => {
       serialCard.onData(0x41) // 'A'
-      serialCard.onData(0x42) // 'B'
-      serialCard.onData(0x43) // 'C'
+      serialCard.onData(0x42) // 'B' - overwrites, causes overrun
+      serialCard.onData(0x43) // 'C' - overwrites again
 
-      expect(serialCard.read(0x00)).toBe(0x41)
-      expect(serialCard.read(0x00)).toBe(0x42)
+      // Single-byte RX: only last byte remains
       expect(serialCard.read(0x00)).toBe(0x43)
     })
 
@@ -258,50 +245,38 @@ describe('ACIA (6551 ACIA)', () => {
   })
 
   describe('Interrupt Handling', () => {
-    it('should trigger IRQ on receive interrupt enabled', () => {
-      const mockIRQ = jest.fn()
-      serialCard.raiseIRQ = mockIRQ
-
-      serialCard.write(0x02, 0x04) // Enable receive IRQ
+    it('should set IRQ flag on receive when interrupt enabled', () => {
+      serialCard.write(0x02, 0x00) // bit 1 = 0: receive IRQ enabled
       serialCard.onData(0x42)
 
-      expect(mockIRQ).toHaveBeenCalled()
       expect(serialCard.read(0x01) & 0x80).toBe(0x80) // IRQ flag set
     })
 
-    it('should trigger IRQ on transmit complete when enabled', () => {
-      const mockIRQ = jest.fn()
+    it('should return IRQ status from tick on transmit complete when enabled', () => {
       const mockTransmit = jest.fn()
-      serialCard.raiseIRQ = mockIRQ
       serialCard.transmit = mockTransmit
 
       serialCard.write(0x03, 0x00) // Set control register
       serialCard.write(0x02, 0x04) // TIC=01: transmit IRQ enabled with /RTS low (bits 3-2 = 01)
       serialCard.write(0x00, 0x42)
 
-      for (let i = 0; i < 100; i++) {
-        serialCard.tick(1000000)
-      }
+      const result = serialCard.tick(1000000)
 
-      // Should trigger IRQ when transmission complete
+      // tick() returns IRQ status when transmit complete IRQ fires
+      expect(result & 0x80).toBe(0x80)
       expect(serialCard.read(0x01) & 0x80).toBe(0x80)
     })
 
-    it('should not trigger receive IRQ when disabled', () => {
-      const mockIRQ = jest.fn()
-      serialCard.raiseIRQ = mockIRQ
-
-      serialCard.write(0x02, 0x02) // RIIE=1: receive IRQ disabled (W65C51N: bit1=1 disables)
+    it('should not set IRQ flag on receive when disabled', () => {
+      serialCard.write(0x02, 0x02) // RIIE=1: receive IRQ disabled
       serialCard.onData(0x42)
 
-      expect(mockIRQ).not.toHaveBeenCalled()
+      const status = serialCard.read(0x01)
+      expect(status & 0x80).toBe(0) // IRQ flag not set
     })
 
     it('should clear IRQ flag when data is read', () => {
-      const mockIRQ = jest.fn()
-      serialCard.raiseIRQ = mockIRQ
-
-      serialCard.write(0x02, 0x04) // Enable receive IRQ
+      serialCard.write(0x02, 0x00) // Enable receive IRQ
       serialCard.onData(0x42)
 
       expect(serialCard.read(0x01) & 0x80).toBe(0x80) // IRQ set
@@ -324,17 +299,18 @@ describe('ACIA (6551 ACIA)', () => {
       expect(statusAfter & 0x04).toBe(0x04) // Overrun flag set
     })
 
-    it('should clear overrun after all buffered data is read', () => {
+    it('should clear overrun when data register is read', () => {
       serialCard.onData(0x42)
-      serialCard.onData(0x43) // Cause overrun
+      serialCard.onData(0x43) // Cause overrun (rx still full)
       
-      serialCard.read(0x00) // Read first byte (0x42)
-      let status = serialCard.read(0x01)
-      expect(status & 0x04).toBe(0x04) // Overrun still set (0x43 in buffer)
+      // Overrun flag is set
+      const statusBefore = serialCard.read(0x01)
+      expect(statusBefore & 0x04).toBe(0x04)
       
-      serialCard.read(0x00) // Read second byte (0x43)
-      status = serialCard.read(0x01)
-      expect(status & 0x04).toBe(0) // Overrun cleared now (buffer empty)
+      // Reading data clears overrun
+      serialCard.read(0x00)
+      const statusAfter = serialCard.read(0x01)
+      expect(statusAfter & 0x04).toBe(0)
     })
   })
 
@@ -346,11 +322,7 @@ describe('ACIA (6551 ACIA)', () => {
       serialCard.write(0x02, 0x10) // REM=1: echo mode enabled (bit 4 per 6551 spec)
       serialCard.onData(0x42)
 
-      // Tick to allow transmission
-      for (let i = 0; i < 100; i++) {
-        serialCard.tick(1000000)
-      }
-
+      // Echo happens immediately in onData via transmit callback
       expect(mockTransmit).toHaveBeenCalledWith(0x42)
     })
 
@@ -361,47 +333,33 @@ describe('ACIA (6551 ACIA)', () => {
       serialCard.write(0x02, 0x00) // Echo mode disabled
       serialCard.onData(0x42)
 
-      for (let i = 0; i < 100; i++) {
-        serialCard.tick(1000000)
-      }
-
       expect(mockTransmit).not.toHaveBeenCalled()
     })
 
-    it('should clear TDRE flag in echo mode', () => {
-      serialCard.write(0x02, 0x10) // REM=1: echo mode enabled (bit 4 per 6551 spec)
+    it('should not echo data through TX register (echoes directly)', () => {
+      const mockTransmit = jest.fn()
+      serialCard.transmit = mockTransmit
+
+      serialCard.write(0x02, 0x10) // Echo mode enabled
       serialCard.onData(0x42)
 
+      // Echo goes directly through transmit callback, TDRE stays set
       const status = serialCard.read(0x01)
-      expect(status & 0x10).toBe(0) // TDRE should be clear
+      expect(status & 0x10).toBe(0x10) // TDRE set (TX register not used for echo)
     })
   })
 
   describe('Baud Rate Configuration', () => {
-    it('should support multiple baud rates', () => {
-      const baudRates = [
-        [0x00, 115200],
-        [0x01, 50],
-        [0x02, 75],
-        [0x03, 110],
-        [0x04, 135],
-        [0x05, 150],
-        [0x06, 300],
-        [0x07, 600],
-        [0x08, 1200],
-        [0x09, 1800],
-        [0x0A, 2400],
-        [0x0B, 3600],
-        [0x0C, 4800],
-        [0x0D, 7200],
-        [0x0E, 9600],
-        [0x0F, 19200]
-      ]
+    it('should accept control register writes without error', () => {
+      // Baud rate is no longer emulated (USB serial operates at USB speeds)
+      // but the control register should still be writable/readable
+      const baudCodes = [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+                         0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F]
 
-      baudRates.forEach(([code, rate]) => {
+      baudCodes.forEach((code) => {
         const card = new ACIA()
-        card.write(0x03, code as number) // Control register with baud rate code
-        // Baud rate affects tick timing - verify no errors occur
+        card.write(0x03, code)
+        expect(card.read(0x03)).toBe(code)
       })
     })
   })
@@ -470,29 +428,9 @@ describe('ACIA (6551 ACIA)', () => {
       serialCard.transmit = mockTransmit
 
       serialCard.write(0x00, 0x42)
-      for (let i = 0; i < 100; i++) {
-        serialCard.tick(1000000)
-      }
+      serialCard.tick(1000000)
 
       expect(mockTransmit).toHaveBeenCalled()
-    })
-
-    it('should support custom IRQ callback', () => {
-      const mockIRQ = jest.fn()
-      serialCard.raiseIRQ = mockIRQ
-
-      serialCard.write(0x02, 0x04)
-      serialCard.onData(0x42)
-
-      expect(mockIRQ).toHaveBeenCalled()
-    })
-
-    it('should support custom NMI callback', () => {
-      const mockNMI = jest.fn()
-      serialCard.raiseNMI = mockNMI
-
-      // NMI not currently triggered in implementation, but callback exists
-      expect(typeof serialCard.raiseNMI).toBe('function')
     })
   })
 

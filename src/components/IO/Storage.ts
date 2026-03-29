@@ -65,9 +65,6 @@ export class Storage implements IO {
   private isIdentifying: boolean = false
   private isTransferring: boolean = false
 
-  raiseIRQ = () => {}
-  raiseNMI = () => {}
-
   constructor() {
     // Initialize storage and identity buffers
     this.storage = new Uint8Array(Storage.STORAGE_SIZE)
@@ -129,8 +126,8 @@ export class Storage implements IO {
     }
   }
 
-  tick(frequency: number): void {
-    // No timing behavior needed for this implementation
+  tick(frequency: number): number {
+    return 0
   }
 
   reset(coldStart: boolean): void {

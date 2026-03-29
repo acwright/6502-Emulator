@@ -22,8 +22,6 @@ export class Machine {
   static MAX_FPS: number = 60
   static FRAME_INTERVAL_MS: number = 1000 / Machine.MAX_FPS
 
-  private ioCycleAccumulator: number = 0
-  private ioTickInterval: number = 128 // adjust (64/128/256)
   private loopHandle?: ReturnType<typeof setImmediate> | ReturnType<typeof setTimeout>
 
   cpu: CPU
@@ -92,10 +90,6 @@ export class Machine {
       const acia = new ACIA()
       this.io5 = acia
 
-      // Connect ACIA IRQ/NMI to CPU
-      acia.raiseIRQ = () => this.cpu.irq()
-      acia.raiseNMI = () => this.cpu.nmi()
-
       // Connect ACIA transmit callback
       acia.transmit = (data: number) => {
         if (this.transmit) {
@@ -113,10 +107,6 @@ export class Machine {
       const via = new VIA()
       this.io8 = via
 
-      // Connect VIA IRQ/NMI to CPU
-      via.raiseIRQ = () => this.cpu.irq()
-      via.raiseNMI = () => this.cpu.nmi()
-
       // Create KIM GPIO Attachments
       this.lcdAttachment = new LCDAttachment(16, 2, 10)
       this.keypadAttachment = new KeypadAttachment(true, 20)
@@ -130,10 +120,6 @@ export class Machine {
     } else if (target === 'dev') {
       const acia = new ACIA()
       this.io5 = acia
-
-      // Connect ACIA IRQ/NMI to CPU
-      acia.raiseIRQ = () => this.cpu.irq()
-      acia.raiseNMI = () => this.cpu.nmi()
 
       // Connect ACIA transmit callback
       acia.transmit = (data: number) => {
@@ -155,18 +141,6 @@ export class Machine {
       this.io6 = via
       this.io7 = sound
       this.io8 = video
-
-      // Connect RTC IRQ/NMI to CPU
-      rtc.raiseIRQ = () => this.cpu.irq()
-      rtc.raiseNMI = () => this.cpu.nmi()
-
-      // Connect Video IRQ/NMI to CPU
-      video.raiseIRQ = () => this.cpu.irq()
-      video.raiseNMI = () => this.cpu.nmi()
-
-      // Connect GPIO VIA IRQ/NMI to CPU
-      via.raiseIRQ = () => this.cpu.irq()
-      via.raiseNMI = () => this.cpu.nmi()
 
       // Connect Sound pushSamples callback
       sound.pushSamples = (samples: Float32Array) => {
@@ -203,14 +177,6 @@ export class Machine {
       this.io7 = sound
       this.io8 = video
 
-      // Connect Video IRQ/NMI to CPU
-      video.raiseIRQ = () => this.cpu.irq()
-      video.raiseNMI = () => this.cpu.nmi()
-
-      // Connect VIA IRQ/NMI to CPU
-      via.raiseIRQ = () => this.cpu.irq()
-      via.raiseNMI = () => this.cpu.nmi()
-
       // Connect Sound pushSamples callback
       sound.pushSamples = (samples: Float32Array) => {
         if (this.play) {
@@ -235,10 +201,6 @@ export class Machine {
       const acia = new ACIA()
       this.io5 = acia
 
-      // Connect ACIA IRQ/NMI to CPU
-      acia.raiseIRQ = () => this.cpu.irq()
-      acia.raiseNMI = () => this.cpu.nmi()
-
       // Connect ACIA transmit callback
       acia.transmit = (data: number) => {
         if (this.transmit) {
@@ -259,18 +221,6 @@ export class Machine {
       this.io6 = via
       this.io7 = sound
       this.io8 = video
-
-      // Connect RTC IRQ/NMI to CPU
-      rtc.raiseIRQ = () => this.cpu.irq()
-      rtc.raiseNMI = () => this.cpu.nmi()
-
-      // Connect Video IRQ/NMI to CPU
-      video.raiseIRQ = () => this.cpu.irq()
-      video.raiseNMI = () => this.cpu.nmi()
-
-      // Connect GPIO VIA IRQ/NMI to CPU
-      via.raiseIRQ = () => this.cpu.irq()
-      via.raiseNMI = () => this.cpu.nmi()
 
       // Connect Sound pushSamples callback
       sound.pushSamples = (samples: Float32Array) => {
@@ -355,19 +305,7 @@ export class Machine {
     
     // Tick IO cards for each cycle of the instruction
     for (let i = 0; i < cyclesExecuted; i++) {
-      // ACIA must be cycle-accurate
-      this.io5.tick(this.frequency)
-      
-      this.ioCycleAccumulator++
-      if (this.ioCycleAccumulator >= this.ioTickInterval) {
-        // Skip ticking RAMBank IO1 and IO2 since they have no timing behavior
-        this.io3.tick(this.frequency, this.ioTickInterval)
-        this.io4.tick(this.frequency, this.ioTickInterval)
-        this.io6.tick(this.frequency, this.ioTickInterval)
-        this.io7.tick(this.frequency, this.ioTickInterval)
-        this.io8.tick(this.frequency, this.ioTickInterval)
-        this.ioCycleAccumulator = 0
-      }
+      this.tickIO()
     }
   }
 
@@ -388,19 +326,26 @@ export class Machine {
     // Execute one CPU clock cycle
     this.cpu.tick()
     
-    // ACIA must be cycle-accurate
-    this.io5.tick(this.frequency)
-    
-    // Tick other IO cards at intervals
-    this.ioCycleAccumulator++
-    if (this.ioCycleAccumulator >= this.ioTickInterval) {
-      // Skip ticking RAMBank IO1 and IO2 since they have no timing behavior
-      this.io3.tick(this.frequency, this.ioTickInterval)
-      this.io4.tick(this.frequency, this.ioTickInterval)
-      this.io6.tick(this.frequency, this.ioTickInterval)
-      this.io7.tick(this.frequency, this.ioTickInterval)
-      this.io8.tick(this.frequency, this.ioTickInterval)
-      this.ioCycleAccumulator = 0
+    // Tick all IO cards and handle level-triggered interrupts
+    this.tickIO()
+  }
+
+  private tickIO(): void {
+    let interrupt = 0
+    interrupt |= this.io3.tick(this.frequency)
+    interrupt |= this.io4.tick(this.frequency)
+    interrupt |= this.io5.tick(this.frequency)
+    interrupt |= this.io6.tick(this.frequency)
+    interrupt |= this.io7.tick(this.frequency)
+    interrupt |= this.io8.tick(this.frequency)
+
+    if (interrupt & 0x80) {
+      this.cpu.irqTrigger()
+    } else {
+      this.cpu.irqClear()
+    }
+    if (interrupt & 0x40) {
+      this.cpu.nmi()
     }
   }
 
@@ -455,20 +400,7 @@ export class Machine {
       if (ticksToRun > 0) {
         for (let i = 0; i < ticksToRun; i++) {
           this.cpu.tick()
-
-          // ACIA must be cycle-accurate
-          this.io5.tick(this.frequency)
-
-          this.ioCycleAccumulator++
-          if (this.ioCycleAccumulator >= this.ioTickInterval) {
-            // Skip ticking RAMBank IO1 and IO2 since they have no timing behavior
-            this.io3.tick(this.frequency, this.ioTickInterval)
-            this.io4.tick(this.frequency, this.ioTickInterval)
-            this.io6.tick(this.frequency, this.ioTickInterval)
-            this.io7.tick(this.frequency, this.ioTickInterval)
-            this.io8.tick(this.frequency, this.ioTickInterval)
-            this.ioCycleAccumulator = 0
-          }
+          this.tickIO()
         }
         accumulator -= ticksToRun / ticksPerMs
       }

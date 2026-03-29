@@ -3,6 +3,9 @@ import { IO } from '../IO'
 /**
  * ACIA - Emulates a R6551 ACIA (Asynchronous Communications Interface Adapter)
  * 
+ * Simplified to match real R6551 hardware: single-byte TX/RX registers,
+ * no buffers, no baud rate timing (USB serial operates at USB speeds).
+ * 
  * Register Map:
  * $00: Data Register (read/write)
  * $01: Status Register (read) / Programmed Reset (write)
@@ -11,30 +14,23 @@ import { IO } from '../IO'
  */
 export class ACIA implements IO {
 
-  raiseIRQ = () => {}
-  raiseNMI = () => {}
   transmit?: (data: number) => void
 
   // Registers
-  private dataRegister: number = 0
-  private statusRegister: number = 0x10  // Transmit Data Register Empty
+  private txRegister: number = 0
+  private rxRegister: number = 0
   private commandRegister: number = 0
   private controlRegister: number = 0
 
-  // Buffers
-  private transmitBuffer: number[] = []
-  private receiveBuffer: number[] = []
-
   // Status flags
+  private txRegEmpty: boolean = true
+  private rxRegFull: boolean = false
+  private txPending: boolean = false
+  private overrun: boolean = false
   private parityError: boolean = false
   private framingError: boolean = false
-  private overrun: boolean = false
   private irqFlag: boolean = false
   private echoMode: boolean = false
-
-  // Timing
-  private cycleCounter: number = 0
-  private baudRate: number = 115200
 
   /**
    * Read from ACIA register
@@ -80,51 +76,32 @@ export class ACIA implements IO {
         break
       
       case 0x03: // Control Register
-        this.writeControl(data)
+        this.controlRegister = data & 0xFF
         break
     }
   }
 
   /**
-   * Read data from receive buffer
+   * Read data from receive register
    */
   private readData(): number {
-    if (this.receiveBuffer.length > 0) {
-      const data = this.receiveBuffer.shift()!
-      this.dataRegister = data
-      
-      // Update status: clear Receive Data Register Full
-      this.statusRegister &= ~0x08
-      
-      // Check for overrun if more data arrives
-      if (this.receiveBuffer.length === 0) {
-        this.overrun = false
-        this.statusRegister &= ~0x04
-      }
+    // Clear Receive Data Register Full
+    this.rxRegFull = false
+    this.overrun = false
 
-      // If more bytes remain in the buffer, re-assert IRQ so the BIOS services them
-      if (this.receiveBuffer.length > 0 && !(this.commandRegister & 0x02)) {
-        this.irqFlag = true
-        this.statusRegister |= 0x80
-      } else {
-        this.irqFlag = false
-        this.statusRegister &= ~0x80
-      }
+    // Clear IRQ if it was from RX
+    this.irqFlag = false
 
-      return data
-    }
-    
-    return this.dataRegister
+    return this.rxRegister
   }
 
   /**
-   * Write data to transmit buffer
+   * Write data to transmit register
    */
   private writeData(data: number): void {
-    this.transmitBuffer.push(data & 0xFF)
-    
-    // Clear Transmit Data Register Empty flag
-    this.statusRegister &= ~0x10
+    this.txRegister = data & 0xFF
+    this.txRegEmpty = false
+    this.txPending = true
   }
 
   /**
@@ -148,27 +125,26 @@ export class ACIA implements IO {
     if (this.overrun) status |= 0x04
     
     // Bit 3: Receive Data Register Full
-    if (this.receiveBuffer.length > 0) status |= 0x08
+    if (this.rxRegFull) status |= 0x08
     
     // Bit 4: Transmit Data Register Empty
-    if (this.transmitBuffer.length === 0) status |= 0x10
+    if (this.txRegEmpty) status |= 0x10
     
-    // Bit 5: Data Carrier Detect (DCD)
+    // Bit 5: Data Carrier Detect (DCD) - always connected
     status &= ~0x20
     
-    // Bit 6: Data Set Ready (DSR)
+    // Bit 6: Data Set Ready (DSR) - always ready
     status |= 0x40
     
     // Bit 7: Interrupt (IRQ)
     if (this.irqFlag) status |= 0x80
 
-    // Clear IRQ and error flags after building the status byte (R6551 spec)
+    // Clear IRQ and error flags after reading (R6551 spec)
     this.irqFlag = false
     this.parityError = false
     this.framingError = false
     this.overrun = false
 
-    this.statusRegister = status
     return status
   }
 
@@ -178,82 +154,16 @@ export class ACIA implements IO {
   private writeCommand(data: number): void {
     this.commandRegister = data & 0xFF
 
-    // Bits 0-1: DTR control
-    // const dtrControl = data & 0x03
-    
-    // Bit 1: Receiver Interrupt Request Disable (RIIE) — 0 = IRQ enabled, 1 = disabled (active low)
-    const receiveIRQEnabled = (data & 0x02) === 0
-    
-    // Bits 3-2: Transmitter Interrupt Control (TIC)
-    // const transmitControl = (data >> 2) & 0x03
-    
     // Bit 4: Echo Mode Enable (EME)
     this.echoMode = (data & 0x10) !== 0
-    
-    // Bits 6-7: Parity control
-    // const parityControl = (data >> 6) & 0x03
-
-    // Handle receive IRQ
-    if (receiveIRQEnabled && this.receiveBuffer.length > 0) {
-      this.irqFlag = true
-      this.statusRegister |= 0x80
-      this.raiseIRQ()
-    } else if (!receiveIRQEnabled) {
-      this.irqFlag = false
-      this.statusRegister &= ~0x80
-    }
-  }
-
-  /**
-   * Write to control register
-   */
-  private writeControl(data: number): void {
-    this.controlRegister = data & 0xFF
-
-    // Bits 0-3: Baud rate
-    const baudRateCode = data & 0x0F
-    this.baudRate = this.getBaudRate(baudRateCode)
-    
-    // Bit 4: Receiver clock source (internal/external)
-    const receiverClockSource = (data & 0x10) !== 0
-    
-    // Bits 5-6: Word length (5, 6, 7, or 8 bits)
-    const wordLength = ((data >> 5) & 0x03) + 5
-    
-    // Bit 7: Stop bits (1 or 2)
-    const stopBits = (data & 0x80) ? 2 : 1
-  }
-
-  /**
-   * Get baud rate from control register code
-   */
-  private getBaudRate(code: number): number {
-    const baudRates = [
-      115200,    // 0000 (actually 16x external clock, using 115200 as default)
-      50,      // 0001
-      75,      // 0010
-      110,     // 0011
-      135,     // 0100
-      150,     // 0101
-      300,     // 0110
-      600,     // 0111
-      1200,    // 1000
-      1800,    // 1001
-      2400,    // 1010
-      3600,    // 1011
-      4800,    // 1100
-      7200,    // 1101
-      9600,    // 1110
-      19200    // 1111
-    ]
-    return baudRates[code] || 115200
   }
 
   /**
    * Programmed reset
    */
   private programmedReset(): void {
-    this.statusRegister = 0x10  // Transmit Data Register Empty
+    this.txRegEmpty = true
+    this.txPending = false
     this.parityError = false
     this.framingError = false
     this.overrun = false
@@ -261,100 +171,71 @@ export class ACIA implements IO {
   }
 
   /**
-   * Tick - emulate ACIA timing
+   * Tick - process TX/RX each cycle, return interrupt status
    */
-  tick(frequency: number): void {
-    // Re-evaluate receive interrupt condition.
-    // After readStatus() clears irqFlag, the IRQ must be re-asserted if
-    // the underlying condition (RDRF + receive IRQ enabled) is still active.
-    if (!(this.commandRegister & 0x02) && this.receiveBuffer.length > 0) {
-      this.irqFlag = true
-    }
+  tick(frequency: number): number {
+    // Handle pending transmit - send immediately (no baud timing)
+    if (this.txPending) {
+      this.txPending = false
 
-    if (this.irqFlag) {
-      this.raiseIRQ()
-    }
-
-    this.cycleCounter++
-
-    // Calculate cycles per byte: (CPU_CLOCK / baud_rate) * bits_per_frame
-    // Assuming 10 bits per frame (1 start + 8 data + 1 stop)
-    const cyclesPerByte = Math.floor((frequency / this.baudRate) * 10)
-
-    // Simulate transmission based on actual baud rate
-    if (this.cycleCounter >= cyclesPerByte && this.transmitBuffer.length > 0) {
-      this.cycleCounter = 0
-      
-      // Transmit one byte
-      const byte = this.transmitBuffer.shift()
-      
-      if (byte !== undefined && this.transmit) {
-        this.transmit(byte)
+      if (this.transmit) {
+        this.transmit(this.txRegister)
       }
 
-      // Set Transmit Data Register Empty if buffer is empty
-      if (this.transmitBuffer.length === 0) {
-        this.statusRegister |= 0x10
+      this.txRegEmpty = true
 
-        // Trigger transmit complete IRQ if enabled (bits 3-2 = 01 means TxIRQ on TDRE)
-        if ((this.commandRegister & 0x0C) === 0x04) {
-          this.irqFlag = true
-          this.statusRegister |= 0x80
-          this.raiseIRQ()
-        }
+      // Trigger transmit complete IRQ if enabled (TIC bits 3-2 = 01)
+      if ((this.commandRegister & 0x0C) === 0x04) {
+        this.irqFlag = true
       }
+
+      // Echo mode: received data echoed back
+      // (echo of transmitted data is handled in onData)
     }
+
+    // Return IRQ status
+    return this.irqFlag ? 0x80 : 0
   }
 
   /**
    * Reset the ACIA
    */
   reset(coldStart: boolean): void {
-    this.dataRegister = 0
-    this.statusRegister = 0x10  // Transmit Data Register Empty
+    this.txRegister = 0
+    this.rxRegister = 0
     this.commandRegister = 0
     this.controlRegister = 0
-    
-    this.transmitBuffer = []
-    this.receiveBuffer = []
-    
+
+    this.txRegEmpty = true
+    this.rxRegFull = false
+    this.txPending = false
+    this.overrun = false
     this.parityError = false
     this.framingError = false
-    this.overrun = false
     this.irqFlag = false
     this.echoMode = false
-    
-    this.cycleCounter = 0
-    this.baudRate = 115200
   }
 
   /**
    * Receive data from external source
    */
   onData(data: number): void {
-    if (this.receiveBuffer.length > 0) {
+    if (this.rxRegFull) {
       // Overrun: new data arrived before the previous byte was read
       this.overrun = true
-      this.statusRegister |= 0x04
     }
 
-    this.receiveBuffer.push(data & 0xFF)
-    
-    // Set Receive Data Register Full flag
-    this.statusRegister |= 0x08
+    this.rxRegister = data & 0xFF
+    this.rxRegFull = true
     
     // Trigger receive IRQ if enabled (bit 1 = 0 means enabled, active low)
     if (!(this.commandRegister & 0x02)) {
       this.irqFlag = true
-      this.statusRegister |= 0x80
-      this.raiseIRQ()
     }
 
     // Echo mode: automatically transmit received data
-    if (this.echoMode) {
-      this.transmitBuffer.push(data & 0xFF)
-      // Clear Transmit Data Register Empty flag
-      this.statusRegister &= ~0x10
+    if (this.echoMode && this.transmit) {
+      this.transmit(data & 0xFF)
     }
   }
 }

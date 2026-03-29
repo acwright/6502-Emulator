@@ -78,9 +78,6 @@ export class VIA implements IO {
   private portA_attachmentCount: number = 0
   private portB_attachmentCount: number = 0
 
-  raiseIRQ = () => {}
-  raiseNMI = () => {}
-
   constructor() {
     this.reset(true)
   }
@@ -333,12 +330,12 @@ export class VIA implements IO {
     }
   }
 
-  tick(frequency: number, cycles: number = 1): void {
+  tick(frequency: number): number {
     this.tickCounter++
 
     // Update Timer 1
     if (this.T1_running && this.regT1C > 0) {
-      this.regT1C -= cycles
+      this.regT1C--
       if (this.regT1C <= 0) {
         this.setIRQFlag(VIA.IRQ_T1)
 
@@ -359,7 +356,7 @@ export class VIA implements IO {
 
     // Update Timer 2
     if (this.T2_running && this.regT2C > 0) {
-      this.regT2C -= cycles
+      this.regT2C--
       if (this.regT2C <= 0) {
         this.setIRQFlag(VIA.IRQ_T2)
         this.regT2C = 0
@@ -401,10 +398,11 @@ export class VIA implements IO {
       }
     }
 
-    // Raise IRQ if any enabled interrupt is active
+    // Return IRQ status if any enabled interrupt is active
     if (this.regIFR & this.regIER & 0x7F) {
-      this.raiseIRQ()
+      return 0x80
     }
+    return 0
   }
 
   private updateIRQ(): void {

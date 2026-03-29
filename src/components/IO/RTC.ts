@@ -26,8 +26,6 @@ import { IO } from '../IO'
  * 0x13: RAM Data (Extended RAM Data at address pointed to by 0x10)
  */
 export class RTC implements IO {
-  raiseIRQ = () => {}
-  raiseNMI = () => {}
 
   // RTC Registers (user-visible)
   private userSeconds: number = 0        // 0x00
@@ -61,6 +59,7 @@ export class RTC implements IO {
   private watchdog2: number = 0      // 0x0D (0.1 Second and Second)
   private watchdogCounterCentis: number = 0
   private watchdogCycleCounter: number = 0
+  private nmiPending: boolean = false
 
   // Control registers
   private controlA: number = 0       // 0x0E
@@ -261,7 +260,6 @@ export class RTC implements IO {
     if ((this.controlA & flagMask) === 0) return
     if ((this.controlB & enableMask) === 0) return
     this.controlA |= 0x01 // Set IRQF flag (bit 0)
-    this.raiseIRQ()
   }
 
   private setKickstartFlag(): void {
@@ -304,7 +302,7 @@ export class RTC implements IO {
     } else {
       // WDS=1 steers watchdog to reset; emulate by clearing WDE
       this.controlB &= ~0x02
-      this.raiseNMI()
+      this.nmiPending = true
     }
   }
 
@@ -449,7 +447,7 @@ export class RTC implements IO {
 
 
 
-  tick(frequency: number, cycles: number = 1): void {
+  tick(frequency: number): number {
     this.cpuFrequency = frequency > 0 ? frequency : 1000000
 
     const teEnabled = (this.controlB & 0x80) !== 0
@@ -457,12 +455,17 @@ export class RTC implements IO {
     if ((this.monthControl & 0x80) !== 0) {
       // EOSC=1: oscillator disabled (DS1511Y+ active-low enable)
       this.stepWatchdog()
-      return
+      let status = (this.controlA & 0x01) ? 0x80 : 0
+      if (this.nmiPending) {
+        status |= 0x40
+        this.nmiPending = false
+      }
+      return status
     }
 
     // Advance the clock by counting CPU cycles.
     // One emulated second = cpuFrequency cycles.
-    this.cycleAccumulator += cycles
+    this.cycleAccumulator++
     while (this.cycleAccumulator >= this.cpuFrequency) {
       this.cycleAccumulator -= this.cpuFrequency
       this.incrementTime()
@@ -482,6 +485,14 @@ export class RTC implements IO {
     }
 
     this.stepWatchdog()
+
+    // Return interrupt status: bit 7 = IRQ, bit 6 = NMI
+    let status = (this.controlA & 0x01) ? 0x80 : 0
+    if (this.nmiPending) {
+      status |= 0x40
+      this.nmiPending = false
+    }
+    return status
   }
 
   reset(coldStart: boolean): void {

@@ -35,11 +35,11 @@ const CTRL_PULSE = 0x40
 const CTRL_NOISE = 0x80
 
 /**
- * Helper: tick the Sound for a given number of macro-ticks
- * Each tick processes 128 SID clock cycles internally
+ * Helper: tick the Sound for a given number of macro-ticks.
+ * Each macro-tick = 128 individual ticks (matching the old CYCLES_PER_TICK batch size).
  */
 const tickN = (sid: Sound, n: number): void => {
-  for (let i = 0; i < n; i++) {
+  for (let i = 0; i < n * 128; i++) {
     sid.tick(SID_CLOCK_NTSC)
   }
 }
@@ -632,11 +632,9 @@ describe('Sound (MOS 6581 SID)', () => {
 
   describe('IO interface', () => {
 
-    test('should have raiseIRQ and raiseNMI callbacks', () => {
-      expect(sid.raiseIRQ).toBeDefined()
-      expect(sid.raiseNMI).toBeDefined()
-      expect(typeof sid.raiseIRQ).toBe('function')
-      expect(typeof sid.raiseNMI).toBe('function')
+    test('tick should return interrupt status', () => {
+      // Sound does not generate interrupts
+      expect(sid.tick(1000000)).toBe(0)
     })
 
     test('read should handle any address value', () => {

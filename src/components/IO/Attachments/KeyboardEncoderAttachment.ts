@@ -86,7 +86,7 @@ export class KeyboardEncoderAttachment extends AttachmentBase {
   // 'A' = PS/2 encoder on Port A (CA1 IRQ only)
   // 'B' = Matrix encoder on Port B (CB1 IRQ only)
   // 'both' = both ports active (default)
-  activePort: 'A' | 'B' | 'both' = 'both'
+  activePort: 'A' | 'B' | 'both' = 'B'
 
   // Port A state
   private asciiDataA: number = 0x00

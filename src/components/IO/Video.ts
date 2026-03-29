@@ -130,16 +130,12 @@ const TMS_NUM_REGISTERS = 8
 // Timing (NTSC)
 const TOTAL_SCANLINES = 262
 const FRAMES_PER_SECOND = 60
-const CYCLES_PER_TICK = 128 // Must match Machine.ts ioTickInterval
 
 // Border offsets (centering 256x192 in 320x240)
 const BORDER_X = (DISPLAY_WIDTH - TMS_PIXELS_X) / 2   // 32
 const BORDER_Y = (DISPLAY_HEIGHT - TMS_PIXELS_Y) / 2  // 24
 
 export class Video implements IO {
-
-  raiseIRQ = () => {}
-  raiseNMI = () => {}
 
   // ---- VDP internal state ----
 
@@ -207,16 +203,19 @@ export class Video implements IO {
     }
   }
 
-  tick(frequency: number): void {
+  tick(frequency: number): number {
     const cyclesPerFrame = frequency / FRAMES_PER_SECOND
     const cyclesPerScanline = cyclesPerFrame / TOTAL_SCANLINES
 
-    this.cycleAccumulator += CYCLES_PER_TICK
+    this.cycleAccumulator++
 
     while (this.cycleAccumulator >= cyclesPerScanline) {
       this.cycleAccumulator -= cyclesPerScanline
       this.processScanline()
     }
+
+    // Return IRQ status based on interrupt flag in status register
+    return (this.status & STATUS_INT) ? 0x80 : 0
   }
 
   reset(_coldStart: boolean): void {
@@ -432,7 +431,6 @@ export class Video implements IO {
     // Set interrupt flag at end of active display
     if (y === TMS_PIXELS_Y - 1 && (this.registers[TMS_REG_1] & TMS_R1_INT_ENABLE)) {
       this.status |= STATUS_INT
-      this.raiseIRQ()
     }
 
     this.writeScanlineToBuffer(y, pixels)

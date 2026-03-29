@@ -8,21 +8,8 @@ describe('Empty', () => {
   })
 
   describe('Initialization', () => {
-    it('should have IRQ callback', () => {
-      expect(typeof empty.raiseIRQ).toBe('function')
-    })
-
-    it('should have NMI callback', () => {
-      expect(typeof empty.raiseNMI).toBe('function')
-    })
-
-    it('should not throw when calling raiseIRQ', () => {
-      expect(() => empty.raiseIRQ()).not.toThrow()
-    })
-
-    it('should not throw when calling raiseNMI', () => {
-      expect(() => empty.raiseNMI()).not.toThrow()
-    })
+    // raiseIRQ/raiseNMI callbacks removed; interrupts are now
+    // communicated via tick() return value
   })
 
   describe('Reading', () => {
@@ -120,8 +107,6 @@ describe('Empty', () => {
         const value = empty.read(0x00)
         expect(value).toBe(0)
         empty.tick(1000000)
-        empty.raiseIRQ()
-        empty.raiseNMI()
         empty.reset(false)
       }).not.toThrow()
     })

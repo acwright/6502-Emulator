@@ -5,9 +5,15 @@ describe('KeyboardEncoderAttachment', () => {
 
   beforeEach(() => {
     encoder = new KeyboardEncoderAttachment(5)
+    encoder.activePort = 'both' // Enable both ports for testing
   })
 
   describe('Initialization', () => {
+    it('should default to Port B only', () => {
+      const fresh = new KeyboardEncoderAttachment(5)
+      expect(fresh.activePort).toBe('B')
+    })
+
     it('should initialize with no data ready', () => {
       expect(encoder.hasDataReadyA()).toBe(false)
       expect(encoder.hasDataReadyB()).toBe(false)

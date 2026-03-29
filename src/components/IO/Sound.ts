@@ -40,9 +40,6 @@ export const SID_CLOCK_PAL = 985248
 /** Number of SID registers */
 const NUM_REGISTERS = 29
 
-/** Cycles per tick from Machine.ts ioTickInterval */
-const CYCLES_PER_TICK = 128
-
 // Register offsets within each voice (relative to voice base)
 const REG_FREQ_LO = 0
 const REG_FREQ_HI = 1
@@ -162,9 +159,6 @@ export class SIDVoice {
 
 export class Sound implements IO {
 
-  raiseIRQ = () => {}
-  raiseNMI = () => {}
-
   /** Callback to push audio samples to the host emulator */
   pushSamples?: (samples: Float32Array) => void
 
@@ -202,7 +196,7 @@ export class Sound implements IO {
   sidClock: number = SID_CLOCK_NTSC
 
   /** Internal sample buffer for pushing to host */
-  private sampleBuffer: Float32Array = new Float32Array(4096)
+  private sampleBuffer: Float32Array = new Float32Array(128)
   private sampleBufferIndex: number = 0
 
   // ================================================================
@@ -247,35 +241,28 @@ export class Sound implements IO {
     }
   }
 
-  tick(frequency: number): void {
+  tick(frequency: number): number {
     // SID clock runs at the CPU clock rate
     this.sidClock = frequency
 
-    // Each tick represents CYCLES_PER_TICK SID clock cycles
-    const cycles = CYCLES_PER_TICK
+    // Each tick represents 1 SID clock cycle
+    this.clockOneCycle()
 
-    for (let c = 0; c < cycles; c++) {
-      this.clockOneCycle()
+    // Sample rate conversion: accumulate and downsample
+    this.cycleAccumulator += this.sampleRate
+    if (this.cycleAccumulator >= this.sidClock) {
+      this.cycleAccumulator -= this.sidClock
 
-      // Sample rate conversion: accumulate and downsample
-      this.cycleAccumulator += this.sampleRate
-      if (this.cycleAccumulator >= this.sidClock) {
-        this.cycleAccumulator -= this.sidClock
+      const sample = this.generateSample()
+      this.sampleBuffer[this.sampleBufferIndex++] = sample
 
-        const sample = this.generateSample()
-        this.sampleBuffer[this.sampleBufferIndex++] = sample
-
-        // Buffer full - push to host
-        if (this.sampleBufferIndex >= this.sampleBuffer.length) {
-          this.flushSampleBuffer()
-        }
+      // Buffer full - push to host
+      if (this.sampleBufferIndex >= this.sampleBuffer.length) {
+        this.flushSampleBuffer()
       }
     }
 
-    // Flush remaining samples
-    if (this.sampleBufferIndex > 0) {
-      this.flushSampleBuffer()
-    }
+    return 0
   }
 
   reset(coldStart: boolean): void {

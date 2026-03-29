@@ -79,9 +79,9 @@ const setupTextMode = (vdp: Video): void => {
  * frame clears the status register during sprite processing).
  */
 const renderOneFrame = (vdp: Video, frequency: number = 1000000): void => {
-  // At 2MHz: cyclesPerFrame ≈ 33333, each tick = 128 cycles → ~261 ticks/frame
-  const ticksPerFrame = Math.ceil((frequency / 60) / 128)
-  for (let i = 0; i < ticksPerFrame; i++) {
+  // Each tick = 1 cycle. Cycles per frame = frequency / 60.
+  const cyclesPerFrame = Math.ceil(frequency / 60)
+  for (let i = 0; i < cyclesPerFrame; i++) {
     vdp.tick(frequency)
   }
 }
@@ -389,16 +389,15 @@ describe('Video (TMS9918 VDP)', () => {
       expect(vdp.getStatus() & 0x80).toBe(0)
     })
 
-    it('should call raiseIRQ when interrupt flag is set', () => {
-      const irqFn = jest.fn()
-      vdp.raiseIRQ = irqFn
-
+    it('should return IRQ status from tick when interrupt flag is set', () => {
       writeRegister(vdp, 1, 0x60) // Display active + interrupts enabled
       clearSprites(vdp)
 
       renderOneFrame(vdp)
 
-      expect(irqFn).toHaveBeenCalled()
+      // After frame, tick should return 0x80 indicating IRQ
+      const result = vdp.tick(1000000)
+      expect(result & 0x80).toBe(0x80)
     })
   })
 

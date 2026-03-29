@@ -80,13 +80,9 @@ describe('RTC', () => {
 		})
 
 		it('should raise IRQ when KSF is set and KIE enabled', () => {
-			const mockIRQ = jest.fn()
-			rtc.raiseIRQ = mockIRQ
-
 			rtc.reset(true)
 			rtc.write(0x0f, 0x04)
 
-			expect(mockIRQ).toHaveBeenCalledTimes(1)
 			const controlA = rtc.read(0x0e)
 			expect(controlA & 0x01).toBe(0x01)
 		})
@@ -155,9 +151,6 @@ describe('RTC', () => {
 
 	describe('Alarm', () => {
 		it('should set TDF and raise IRQ when alarm matches', () => {
-			const mockIRQ = jest.fn()
-			rtc.raiseIRQ = mockIRQ
-
 			setTime(rtc, {
 				seconds: 0x00,
 				minutes: 0x00,
@@ -175,9 +168,9 @@ describe('RTC', () => {
 			rtc.write(0x0b, 0x01)
 			rtc.write(0x0f, 0x88)
 
-			rtc.tick(1)
+			const result = rtc.tick(1)
 
-			expect(mockIRQ).toHaveBeenCalledTimes(1)
+			expect(result & 0x80).toBe(0x80) // IRQ signalled via return value
 			const controlA = rtc.read(0x0e)
 			expect(controlA & 0x08).toBe(0x08)
 			expect(controlA & 0x01).toBe(0x01)
@@ -186,32 +179,26 @@ describe('RTC', () => {
 
 	describe('Watchdog', () => {
 		it('should raise IRQ when watchdog expires with WDS=0', () => {
-			const mockIRQ = jest.fn()
-			rtc.raiseIRQ = mockIRQ
-
 			rtc.write(0x0f, 0x02)
 			rtc.write(0x0c, 0x01)
 			rtc.write(0x0d, 0x00)
 
-			rtc.tick(1)
+			const result = rtc.tick(1)
 
-			expect(mockIRQ).toHaveBeenCalledTimes(1)
+			expect(result & 0x80).toBe(0x80) // IRQ signalled via return value
 			const controlA = rtc.read(0x0e)
 			expect(controlA & 0x02).toBe(0x02)
 			expect(controlA & 0x01).toBe(0x01)
 		})
 
-		it('should raise NMI and clear WDE when WDS=1', () => {
-			const mockNMI = jest.fn()
-			rtc.raiseNMI = mockNMI
-
+		it('should signal NMI and clear WDE when WDS=1', () => {
 			rtc.write(0x0f, 0x03)
 			rtc.write(0x0c, 0x01)
 			rtc.write(0x0d, 0x00)
 
-			rtc.tick(1)
+			const result = rtc.tick(1)
 
-			expect(mockNMI).toHaveBeenCalledTimes(1)
+			expect(result & 0x40).toBe(0x40) // NMI signalled via return value bit 6
 			expect(rtc.read(0x0f) & 0x02).toBe(0)
 		})
 	})

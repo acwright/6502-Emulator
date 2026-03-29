@@ -20,40 +20,29 @@ export class RAMBank implements IO {
   data: number[] = [...Array(RAMBank.TOTAL_SIZE)].fill(0x00)
   currentBank: number = 0
 
-  raiseIRQ = () => {}
-  raiseNMI = () => {}
-
   /**
-   * Read from RAM or bank control register
+   * Read from RAM - all addresses read from the data array
    */
   read(address: number): number {
-    // Reading from bank control register returns current bank number
-    if (address === RAMBank.BANK_CONTROL_REGISTER) {
-      return this.currentBank
-    }
-    
-    // Calculate actual address in RAM: bank * bank_size + offset and return data
     return this.data[this.currentBank * RAMBank.BANK_SIZE + address]
   }
 
   /**
    * Write to RAM or bank control register
+   * Writing to $3FF sets the bank AND writes through to the new bank's data
    */
   write(address: number, data: number): void {
-    // Writing to bank control register switches banks
     if (address === RAMBank.BANK_CONTROL_REGISTER) {
-      this.currentBank = data & 0xFF // Ensure 0-255 range
-      return
+      this.currentBank = data & 0xFF
     }
     
-    // Calculate actual address in RAM: bank * bank_size + offset and store data
     this.data[this.currentBank * RAMBank.BANK_SIZE + address] = data & 0xFF
   }
   
   /**
    * Tick - no timing behavior for RAM
    */
-  tick(frequency: number): void {}
+  tick(frequency: number): number { return 0 }
   
   /**
    * Reset the RAM card

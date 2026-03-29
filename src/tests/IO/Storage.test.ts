@@ -22,11 +22,6 @@ describe('Storage (Compact Flash in IDE Mode)', () => {
       expect(storageCard.read(0x07) & 0x40).toBe(0x40) // Status (RDY bit)
     })
 
-    it('should have IRQ and NMI callbacks', () => {
-      expect(typeof storageCard.raiseIRQ).toBe('function')
-      expect(typeof storageCard.raiseNMI).toBe('function')
-    })
-
     it('should initialize with all storage zeroed', () => {
       // Verify first sector is all zeros
       storageCard.write(0x02, 1) // Sector count = 1
@@ -554,8 +549,6 @@ describe('Storage (Compact Flash in IDE Mode)', () => {
       expect(typeof storageCard.write).toBe('function')
       expect(typeof storageCard.tick).toBe('function')
       expect(typeof storageCard.reset).toBe('function')
-      expect(typeof storageCard.raiseIRQ).toBe('function')
-      expect(typeof storageCard.raiseNMI).toBe('function')
     })
   })
 
