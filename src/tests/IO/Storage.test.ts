@@ -586,9 +586,9 @@ describe('Storage (Compact Flash in IDE Mode)', () => {
         // Verify file exists
         expect(existsSync(testFile)).toBe(true)
 
-        // Verify file size is 128MB
+        // Verify file size is 32MB
         const fileData = await readFile(testFile)
-        expect(fileData.length).toBe(128 * 1024 * 1024)
+        expect(fileData.length).toBe(32 * 1024 * 1024)
       })
 
       it('should save complete storage contents', async () => {
@@ -624,7 +624,7 @@ describe('Storage (Compact Flash in IDE Mode)', () => {
     describe('loadFromFile', () => {
       it('should load storage data from an existing file', async () => {
         // Create a test file with known data
-        const testData = Buffer.alloc(128 * 1024 * 1024, 0x00)
+        const testData = Buffer.alloc(32 * 1024 * 1024, 0x00)
         
         // Fill first sector with pattern
         for (let i = 0; i < 512; i++) {
@@ -661,10 +661,10 @@ describe('Storage (Compact Flash in IDE Mode)', () => {
         }
       })
 
-      it('should reject file with incorrect size', async () => {
-        // Create a file that's too small
-        const smallData = Buffer.alloc(1024, 0xFF) // Only 1KB
-        await writeFile(invalidSizeFile, smallData)
+      it('should reject file with non-sector-aligned size', async () => {
+        // Create a file that's not a multiple of 512 bytes
+        const badData = Buffer.alloc(1023, 0xFF)
+        await writeFile(invalidSizeFile, badData)
 
         const fileData = await readFile(invalidSizeFile)
         storageCard.loadData(new Uint8Array(fileData))
@@ -680,7 +680,7 @@ describe('Storage (Compact Flash in IDE Mode)', () => {
       })
 
       it('should load multiple sectors correctly', async () => {
-        const testData = Buffer.alloc(128 * 1024 * 1024, 0x00)
+        const testData = Buffer.alloc(32 * 1024 * 1024, 0x00)
         
         // Fill sectors with different patterns
         for (let sector = 0; sector < 10; sector++) {

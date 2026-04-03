@@ -3,7 +3,8 @@ import { IO } from '../IO'
 /**
  * Storage - Emulates a Compact Flash card in 8-bit IDE mode
  * 
- * Emulates a 128MB CF card with ATA-style register interface.
+ * Emulates a CF card with ATA-style register interface.
+ * Default size is 32MB. Size is configurable via constructor or loadData.
  * Uses LBA (Logical Block Addressing) for sector access.
  * 
  * Register Map (address & 0x07):
@@ -26,9 +27,12 @@ import { IO } from '../IO'
 export class Storage implements IO {
 
   // Constants
-  private static readonly STORAGE_SIZE = 128 * 1024 * 1024  // 128MB
+  static readonly DEFAULT_STORAGE_SIZE = 32 * 1024 * 1024  // 32MB
   private static readonly SECTOR_SIZE = 512
-  private static readonly SECTOR_COUNT = Storage.STORAGE_SIZE / Storage.SECTOR_SIZE  // 262144 sectors
+
+  // Instance size properties
+  private storageSize: number
+  private totalSectors: number
 
   // Status Register Flags
   private static readonly STATUS_ERR = 0x01  // Error
@@ -65,9 +69,11 @@ export class Storage implements IO {
   private isIdentifying: boolean = false
   private isTransferring: boolean = false
 
-  constructor() {
+  constructor(size: number = Storage.DEFAULT_STORAGE_SIZE) {
     // Initialize storage and identity buffers
-    this.storage = new Uint8Array(Storage.STORAGE_SIZE)
+    this.storageSize = size
+    this.totalSectors = Math.floor(size / Storage.SECTOR_SIZE)
+    this.storage = new Uint8Array(this.storageSize)
     this.identity = new Uint8Array(Storage.SECTOR_SIZE)
     this.generateIdentity()
     this.reset(true)
@@ -177,8 +183,8 @@ export class Storage implements IO {
           this.status |= Storage.STATUS_ERR
           this.error |= Storage.ERR_ABRT | Storage.ERR_IDNF
         } else {
-          const offset = this.sectorIndex() * Storage.SECTOR_SIZE
-          this.storage.fill(0x00, offset, offset + Storage.SECTOR_SIZE)
+          const eraseOffset = this.sectorIndex() * Storage.SECTOR_SIZE
+          this.storage.fill(0x00, eraseOffset, eraseOffset + Storage.SECTOR_SIZE)
         }
         break
       }
@@ -293,31 +299,36 @@ export class Storage implements IO {
   }
 
   private sectorValid(): boolean {
-    return this.sectorIndex() < Storage.SECTOR_COUNT
+    return this.sectorIndex() < this.totalSectors
   }
 
   private generateIdentity(): void {
-    // Generate emulated 128MB CF card identity
-    // Based on real Promaster 128MB CF card data
+    // Generate emulated CF card identity based on current storage size
 
     // Fill with zeros first
     this.identity.fill(0x00)
+
+    // Compute CHS geometry from sector count
+    const totalSectors = this.totalSectors
+    const heads = 16
+    const sectorsPerTrack = 32
+    const cylinders = Math.floor(totalSectors / (heads * sectorsPerTrack))
 
     // Word 0: General configuration
     this.identity[0] = 0x84
     this.identity[1] = 0x8A  // Removable Disk
 
     // Word 1: Number of cylinders
-    this.identity[2] = 0x00
-    this.identity[3] = 0x04
+    this.identity[2] = cylinders & 0xFF
+    this.identity[3] = (cylinders >> 8) & 0xFF
 
     // Word 2: Reserved
     this.identity[4] = 0x00
     this.identity[5] = 0x00
 
     // Word 3: Number of heads
-    this.identity[6] = 0x08
-    this.identity[7] = 0x00
+    this.identity[6] = heads & 0xFF
+    this.identity[7] = (heads >> 8) & 0xFF
 
     // Word 4: Unformatted bytes per track
     this.identity[8] = 0x00
@@ -328,8 +339,8 @@ export class Storage implements IO {
     this.identity[11] = 0x02
 
     // Word 6: Sectors per track
-    this.identity[12] = 0x20
-    this.identity[13] = 0x00
+    this.identity[12] = sectorsPerTrack & 0xFF
+    this.identity[13] = (sectorsPerTrack >> 8) & 0xFF
 
     // Words 7-9: Reserved
     this.identity[14] = 0x04
@@ -398,39 +409,39 @@ export class Storage implements IO {
     this.identity[107] = 0x00
 
     // Word 54: Current number of cylinders
-    this.identity[108] = 0x00
-    this.identity[109] = 0x04
+    this.identity[108] = cylinders & 0xFF
+    this.identity[109] = (cylinders >> 8) & 0xFF
 
     // Word 55: Current number of heads
-    this.identity[110] = 0x08
-    this.identity[111] = 0x00
+    this.identity[110] = heads & 0xFF
+    this.identity[111] = (heads >> 8) & 0xFF
 
     // Word 56: Current sectors per track
-    this.identity[112] = 0x20
-    this.identity[113] = 0x00
+    this.identity[112] = sectorsPerTrack & 0xFF
+    this.identity[113] = (sectorsPerTrack >> 8) & 0xFF
 
     // Words 57-58: Current capacity in sectors
-    this.identity[114] = 0x00
-    this.identity[115] = 0x00
-    this.identity[116] = 0x04
-    this.identity[117] = 0x00
+    this.identity[114] = totalSectors & 0xFF
+    this.identity[115] = (totalSectors >> 8) & 0xFF
+    this.identity[116] = (totalSectors >> 16) & 0xFF
+    this.identity[117] = (totalSectors >> 24) & 0xFF
 
     // Word 59: Multiple sector setting
     this.identity[118] = 0x01
     this.identity[119] = 0x01
 
     // Words 60-61: Total number of sectors in LBA mode
-    this.identity[120] = 0x00
-    this.identity[121] = 0x00
-    this.identity[122] = 0x04
-    this.identity[123] = 0x00
+    this.identity[120] = totalSectors & 0xFF
+    this.identity[121] = (totalSectors >> 8) & 0xFF
+    this.identity[122] = (totalSectors >> 16) & 0xFF
+    this.identity[123] = (totalSectors >> 24) & 0xFF
 
     // Remaining words are zero
   }
 
   /**
    * Load storage data from a Uint8Array, ArrayBuffer, or number array
-   * If data is not provided or wrong size, storage remains empty
+   * Resizes storage to match the loaded data if it is a valid multiple of the sector size
    */
   loadData(data: Uint8Array | ArrayBuffer | number[] | null): void {
     if (!data) {
@@ -447,15 +458,18 @@ export class Storage implements IO {
       uint8Data = new Uint8Array(data)
     }
 
-    // Ensure the data is exactly the expected size, or empty (new file)
-    if (uint8Data.length === Storage.STORAGE_SIZE) {
-      this.storage.set(uint8Data)
-      console.log(`Storage loaded (${Storage.STORAGE_SIZE} bytes)`)
-    } else if (uint8Data.length === 0) {
+    if (uint8Data.length === 0) {
       this.storage.fill(0x00)
       console.log('Storage initialized as new empty image.')
+    } else if (uint8Data.length % Storage.SECTOR_SIZE === 0) {
+      this.storageSize = uint8Data.length
+      this.totalSectors = this.storageSize / Storage.SECTOR_SIZE
+      this.storage = new Uint8Array(this.storageSize)
+      this.storage.set(uint8Data)
+      this.generateIdentity()
+      console.log(`Storage loaded (${this.storageSize} bytes)`)
     } else {
-      console.warn(`Warning: Storage data size mismatch. Expected ${Storage.STORAGE_SIZE} bytes, got ${uint8Data.length} bytes.`)
+      console.warn(`Warning: Storage data size (${uint8Data.length} bytes) is not a multiple of sector size (${Storage.SECTOR_SIZE}).`)
       console.warn('Storage will remain empty.')
     }
   }
