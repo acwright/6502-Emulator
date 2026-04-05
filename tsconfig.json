@@ -6,9 +6,8 @@
     "target": "es6",
     "module": "commonjs",
     "sourceMap": true,
-    "declaration": true,
     "esModuleInterop": true,
     "moduleResolution": "node",
-    "ignoreDeprecations": "6.0"
+    "declaration": true
   }
 }
