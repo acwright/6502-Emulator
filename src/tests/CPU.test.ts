@@ -249,6 +249,57 @@ describe('CPU', () => {
       
       expect(cpu.a).toBe(0x88)
     })
+
+    test('LDA (zp) [65C02] should load via zero-page indirect', () => {
+      // Zero-page pointer at $40/$41 -> $1234
+      memory[0x0040] = 0x34
+      memory[0x0041] = 0x12
+      memory[0x1234] = 0x77
+      memory[0x8000] = 0xB2  // LDA (zp)
+      memory[0x8001] = 0x40
+      memory[0xFFFC] = 0x00
+      memory[0xFFFD] = 0x80
+
+      cpu.reset()
+      cpu.step()
+
+      expect(cpu.a).toBe(0x77)
+    })
+
+    test('LDA (zp) [65C02] should wrap pointer high byte at zero-page boundary', () => {
+      // Pointer at $FF/$00 (wraps within zero page)
+      memory[0x00FF] = 0xCD
+      memory[0x0000] = 0xAB
+      memory[0xABCD] = 0x55
+      memory[0x8000] = 0xB2  // LDA (zp)
+      memory[0x8001] = 0xFF
+      memory[0xFFFC] = 0x00
+      memory[0xFFFD] = 0x80
+
+      cpu.reset()
+      cpu.step()
+
+      expect(cpu.a).toBe(0x55)
+    })
+
+    test('CMP (zp) [65C02] should compare via zero-page indirect', () => {
+      memory[0x0030] = 0x00
+      memory[0x0031] = 0x90
+      memory[0x9000] = 0x42
+      memory[0x8000] = 0xA9  // LDA #$42
+      memory[0x8001] = 0x42
+      memory[0x8002] = 0xD2  // CMP (zp)
+      memory[0x8003] = 0x30
+      memory[0xFFFC] = 0x00
+      memory[0xFFFD] = 0x80
+
+      cpu.reset()
+      cpu.step()  // LDA
+      cpu.step()  // CMP
+
+      expect(cpu.st & CPU.Z).toBe(CPU.Z)
+      expect(cpu.st & CPU.C).toBe(CPU.C)
+    })
   })
 
   describe('Store Instructions', () => {
